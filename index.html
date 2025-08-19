@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>index – Interaktiv karta (v3.5.9 – låst ikonstorlek + retina-fix)</title>
+<title>index – Interaktiv karta (v3.6.0 – ikon fade-in & storlekskurva)</title>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   :root{--bg:#0f1115;--ink:#e6e6e6;--muted:#2a3142;--panel:#141822;--shadow:rgba(0,0,0,.45);--accent:#ffd166;--vh:1vh;--marker-size:38px}
@@ -15,10 +15,10 @@
   #map{display:block;user-select:none;-webkit-user-drag:none;pointer-events:none;max-width:none}
 
   /* === Marker & konstant hitbox === */
-  .marker{position:absolute;width:var(--marker-size);height:var(--marker-size);transform:translate(-50%,-100%);cursor:pointer}
+  .marker{position:absolute;width:var(--marker-size);height:var(--marker-size);transform:translate(-50%,-100%);cursor:pointer;opacity:0;/* start: invis */}
   .marker.open{filter:drop-shadow(0 0 6px var(--accent))}
   .marker img{width:100%;height:100%;display:block;object-fit:contain;image-rendering:auto;backface-visibility:hidden;pointer-events:none}
-  /* Konstanta px-träffytor oavsett zoom */
+  /* Pseudo-element som fungerar som träffyta för drag – håller konstant px-storlek oavsett zoom */
   .marker::before{content:"";position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:16px;transform:translate(-50%,-50%) scale(var(--hit-comp,1));pointer-events:auto;background:transparent}
 
   #sidebar{position:fixed;left:0;top:0;height:100dvh;width:360px;max-width:90vw;background:rgba(20,24,34,.96);border-right:1px solid var(--muted);box-shadow:0 6px 20px var(--shadow);z-index:30;display:none}
@@ -121,22 +121,29 @@
 
 <script>
 (function(){
+  // === Parametrar för synlighet & storlek ===
+  // Ikoner är osynliga från helt ut-zoomat läge tills zoom når en brytpunkt.
+  // Vi arbetar i "normaliserad zoom" z = scale / startScale.
+  const Z_APPEAR_START = 6.30;  // under detta: 0% synligt
+  const Z_APPEAR_END   = 8.00;  // över detta: 100% synligt
+
+  // Skärmstorlek vid full synlighet. Olika på mobil vs desktop.
+  const IS_MOBILE = matchMedia('(max-width:820px)').matches;
+  const ICON_TARGET_PX = IS_MOBILE ? 75 : 75;
+  const ICON_MAX_PX    = IS_MOBILE ? 120 : 120; // övre spärr så inget blir groteskt
+
   const WEBP_QUALITY=0.8, MAX_IMG_EDGE=2560;
   const setVH=()=>document.documentElement.style.setProperty('--vh',(visualViewport?visualViewport.height:window.innerHeight)*.01+'px'); setVH(); (visualViewport||window).addEventListener('resize',setVH);
   const IS_PLAYER=(location.hash==='#player')||(new URLSearchParams(location.search).get('mode')==='player');
-  const IS_MOBILE=matchMedia('(max-width:820px)').matches;
   const METERS_PER_PIXEL=250000/1073.6; const MAP_WIDTH=8192, MAP_HEIGHT=5462; let metersPerPixelOverride=NaN; const getMetersPerPixel=()=>isNaN(metersPerPixelOverride)?METERS_PER_PIXEL:metersPerPixelOverride;
 
   const ICONS_NORMAL=['gods.png','kompass.png','person.png','sword.png','town.png'];
   const ICONS_OPEN  =['gods2.png','kompass2.png','person2.png','sword2.png','town2.png'];
   const ICON_COUNT=Math.min(ICONS_NORMAL.length, ICONS_OPEN.length);
-
   const ICONS_PATH = IS_PLAYER ? 'icons/' : '';
   function _2xName(name){ const i=name.lastIndexOf('.'); return i>0 ? name.slice(0,i)+'@2x'+name.slice(i) : name+'@2x'; }
   function withPath(name){ return ICONS_PATH + name; }
 
-  // Visuell storlek (på skärmen) vi siktar på – lite större på mobil för tydlighet
-  const ICON_TARGET_PX = IS_MOBILE ? 62 : 62; // önskad skärmpixelstorlek
   let MARKER_BASE_PX = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--marker-size'))||38;
 
   const stage=$('#stage'), world=$('#world'), map=$('#map'), overlay=$('#overlay');
@@ -151,32 +158,48 @@
 
   let scale=1, MIN=1, MAX=24, startScale=1, tx=0, ty=0, imgW=0, imgH=0;
   const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+  function lerp(a,b,t){ return a+(b-a)*t; }
+
   function getPanBounds(){ const vw=stage.clientWidth, vh=stage.clientHeight, w=imgW*scale, h=imgH*scale, cx=(vw-w)/2, cy=(vh-h)/2; if(w<=vw&&h<=vh)return{minTx:cx,maxTx:cx,minTy:cy,maxTy:cy}; if(w<=vw)return{minTx:cx,maxTx:cx,minTy:Math.min(0,vh-h),maxTy:0}; if(h<=vh)return{minTx:Math.min(0,vw-w),maxTx:0,minTy:cy,maxTy:cy}; return{minTx:Math.min(0,vw-w),maxTx:0,minTy:Math.min(0,vh-h),maxTy:0}; }
   function clampPan(){ const b=getPanBounds(); tx=clamp(tx,b.minTx,b.maxTx); ty=clamp(ty,b.minTy,b.maxTy); }
 
-  // === NYTT: Helt konstant skärmstorlek för markörer över hela zoomspannet ===
-  function cssScaleForMarker(){
-    const s = scale; // världens zoom
-    // För att hålla skärmpixlarna konstanta: s * cssS * MARKER_BASE_PX = ICON_TARGET_PX
-    let cssS = ICON_TARGET_PX / (MARKER_BASE_PX * s);
-    // Lätta skyddsräcken om någon manuellt ändrar variablerna
-    const MIN_PX = 28, MAX_PX = 96;
-    const pxNow = MARKER_BASE_PX * s * cssS; // bör = ICON_TARGET_PX
-    if(pxNow < MIN_PX) cssS *= (MIN_PX/pxNow);
-    if(pxNow > MAX_PX) cssS *= (MAX_PX/pxNow);
-    return cssS;
+  function visibilityT(){
+    // normaliserad zoom
+    const z = scale / startScale;
+    const t = (z - Z_APPEAR_START) / (Z_APPEAR_END - Z_APPEAR_START);
+    return clamp(t, 0, 1);
+  }
+
+  function cssScaleForMarker(desiredPx){
+    // Håll exakt "desiredPx" på skärmen oavsett zoom
+    const s = scale;
+    const px = clamp(desiredPx, 0, ICON_MAX_PX);
+    const safePx = Math.max(px, 0.0001); // undvik div/0 nära 0
+    return safePx / (MARKER_BASE_PX * s);
   }
 
   function applyTransform(){
     world.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
-    const cssS = cssScaleForMarker();
-    const hitComp = 1/(scale * cssS); // gör pseudo-hitboxen konstant i px
+    const t = visibilityT();
+
+    // Väx ikoner från 0 px → ICON_TARGET_PX när t går 0→1
+    const targetPx = lerp(0, ICON_TARGET_PX, t);
+    const cssS = cssScaleForMarker(targetPx);
+    const hitComp = targetPx>0 ? 1/(scale * cssS) : 1; // konstant hitbox i px när synlig
+
     world.querySelectorAll('.marker').forEach(el=>{
       const extra=parseFloat(el.dataset.iconScale||'1');
       el.style.transform=`translate(-50%,-100%) scale(${cssS * extra})`;
       el.style.setProperty('--hit-comp', hitComp);
+      el.style.opacity = t; // fade-in
+      // Stäng av interaktion när nästan osynlig
+      el.style.pointerEvents = (t>0.2)?'auto':'none';
+      // För säkerhets skull: dölj helt under start
+      el.style.visibility = (t>0 ? 'visible' : 'hidden');
     });
-    overlay.setAttribute('width',imgW); overlay.setAttribute('height',imgH); updateScaleBar();
+
+    overlay.setAttribute('width',imgW); overlay.setAttribute('height',imgH);
+    if(typeof updateScaleBar==='function') updateScaleBar();
   }
 
   function zoomAt(sx,sy,f){ const r=stage.getBoundingClientRect(), x=sx-r.left, y=sy-r.top, wx=(x-tx)/scale, wy=(y-ty)/scale, ns=clamp(scale*f,MIN,MAX); tx=x-wx*ns; ty=y-wy*ns; scale=ns; clampPan(); applyTransform(); }
@@ -190,9 +213,9 @@
   function endPointer(e){ if(e.pointerType!=='mouse'){ pointers.delete(e.pointerId); if(pointers.size<2) lastDist=null; if(pointers.size===0) panStart=null; } if(e.pointerType==='mouse'){ if(leftPan||rightPan) stage.releasePointerCapture?.(e.pointerId); leftPan=false; rightPan=false; panStart=null; } }
   stage.addEventListener('pointerup',endPointer); stage.addEventListener('pointercancel',endPointer);
 
-  const LSK='tyraal_markers_meta_v28', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null; function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{db=r.result; if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:'id'})}; r.onsuccess=()=>{db=r.result; res(db)}; r.onerror=()=>rej(r.error)});} function idbGet(id){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readonly'), st=tx.objectStore(DB_STORE), q=st.get(id); q.onsuccess=()=>res(q.result?.html||''); q.onerror=()=>rej(q.error)});} function idbSet(id,html){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite'), st=tx.objectStore(DB_STORE), q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error)});} function idbBulkGet(ids){return Promise.all(ids.map(id=>idbGet(id).then(html=>({id,html}))));}
-  function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id, x:parseFloat(m.style.left), y:parseFloat(m.style.top), icon: parseInt(m.dataset.icon||'0',10)||0 })); try{localStorage.setItem(LSK,JSON.stringify(out))}catch(_){} }
-  async function saveHTML(id,html){ if(IS_PLAYER) return; try{await idbSet(id,html)}catch(_){} }
+  const LSK='tyraal_markers_meta_v29', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null; function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{db=r.result; if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:'id'})}; r.onsuccess=()=>{db=r.result; res(db)}; r.onerror=()=>rej(r.error)});} function idbGet(id){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readonly'), st=tx.objectStore(DB_STORE), q=st.get(id); q.onsuccess=()=>res(q.result?.html||''); q.onerror=()=>rej(q.error)});} function idbSet(id,html){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite'), st=tx.objectStore(DB_STORE), q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error)});} function idbBulkGet(ids){return Promise.all(ids.map(id=>idbGet(id).then(html=>({id,html}))));}
+  function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id, x:parseFloat(m.style.left), y:parseFloat(m.style.top), icon: parseInt(m.dataset.icon||'0',10)||0 })); try{localStorage.setItem(LSK,JSON.stringify(out))}catch(_){}}
+  async function saveHTML(id,html){ if(IS_PLAYER) return; try{await idbSet(id,html)}catch(_){}}
   async function loadAllFromLocal(){ const meta=JSON.parse(localStorage.getItem(LSK)||'[]'); meta.forEach(o=>createMarker(o.x,o.y,o.id,false, o.icon||0)); const htmls=await idbBulkGet(meta.map(m=>m.id)); htmls.forEach(({id,html})=>{store[id]={html:html||''}}); }
   async function loadAllFromJSON(){ try{ const r=await fetch('data.json',{cache:'no-store'}); if(!r.ok) throw new Error('Kunde inte läsa data.json'); const data=await r.json(); if(typeof data.metersPerPixel==='number'&&isFinite(data.metersPerPixel)) metersPerPixelOverride=data.metersPerPixel; if(Array.isArray(data.markers)){ data.markers.forEach(m=>{ createMarker(m.x,m.y,m.id,false, m.icon||0); store[m.id]={html:m.html||''}; }); } } catch(err){ console.error(err); alert('Kunde inte ladda spelardata (data.json).'); } }
 
@@ -222,7 +245,7 @@
 
   stage.addEventListener('dblclick',e=>{ if(mode!=='notes'||IS_PLAYER) return; if(e.target.closest('.marker')||e.target.closest('#sidebar')||e.target.closest('#sheet')) return; e.preventDefault(); const {wx,wy}=clientToWorldXY(e.clientX,e.clientY); const id=uid(); store[id]={html:'Skriv din not här...'}; createMarker(wx,wy,id,true,currentIconIndex); openMarker(id); },{passive:false});
 
-  // === Retina-förbättring: sätt alltid srcset, låt @2x användas där det finns ===
+  // Retina: sätt alltid srcset (iOS tar @2x automatiskt om det finns)
   async function markerSetIcon(el,index){
     el.dataset.icon=String(index||0);
     const isOpen=el.classList.contains('open');
@@ -231,8 +254,8 @@
     const x1 = withPath(base); const x2 = withPath(_2xName(base));
     const img=el.querySelector('img')||el.appendChild(document.createElement('img'));
     img.decoding='async'; img.loading='eager';
-    img.src = x1;            // 1x alltid säker
-    img.srcset = `${x1} 1x, ${x2} 2x`; // iOS kommer använda 2x om filen finns
+    img.src = x1;            // 1x
+    img.srcset = `${x1} 1x, ${x2} 2x`;
   }
 
   function createMarker(wx,wy,id,saveNow=true,iconIndex=0){ if(!isFinite(wx)||!isFinite(wy)) return null; const m=document.createElement('div'); m.className='marker'; m.dataset.id=id; m.style.left=wx+'px'; m.style.top=wy+'px';
@@ -246,7 +269,7 @@
     m.addEventListener('contextmenu',async ev=>{ if(IS_PLAYER) return; ev.preventDefault(); if(confirm('Ta bort denna markering och dess notis?')){ if(openId===id) closePanels(); world.removeChild(m); delete store[id]; saveMeta(); try{await idbSet(id,'')}catch(_){}} });
     world.appendChild(m); if(saveNow) saveMeta(); return m; }
 
-  let currentIconIndex=0; function buildIconPicker(container,small=true){ if(IS_PLAYER){ container.style.display='none'; container.innerHTML=''; return; } container.innerHTML=''; for(let i=0;i<ICON_COUNT;i++){ const b=document.createElement('button'); b.type='button'; b.className= small?'iconopt':'miconopt'; b.style.backgroundImage=`url('${withPath(ICONS_NORMAL[i])}')`; b.title=`Ikon ${i+1}`; if(i===currentIconIndex) b.classList.add('active'); b.addEventListener('click',()=>{ if(IS_PLAYER) return; currentIconIndex=i; [...container.parentElement.querySelectorAll('.iconopt, .miconopt')].forEach(x=>x.classList.remove('active')); b.classList.add('active'); if(openId){ const el=world.querySelector(`.marker[data-id="${openId}"]`); markerSetIcon(el,i); saveMeta(); } }); container.appendChild(b); } }
+  let currentIconIndex=0; function buildIconPicker(container,small=true){ if(IS_PLAYER){ container.style.display='none'; container.innerHTML=''; return; } container.innerHTML=''; for(let i=0;i<ICON_COUNT;i++){ const b=document.createElement('button'); b.type='button'; b.className= small?'iconopt':'miconopt'; b.style.backgroundImage=`url('${withPath(ICONS_NORMAL[i])}')`; b.title=`Ikon ${i+1}`; if(i===currentIconIndex) b.addEventListener('focus',()=>{}); if(i===currentIconIndex) b.classList.add('active'); b.addEventListener('click',()=>{ if(IS_PLAYER) return; currentIconIndex=i; [...container.parentElement.querySelectorAll('.iconopt, .miconopt')].forEach(x=>x.classList.remove('active')); b.classList.add('active'); if(openId){ const el=world.querySelector(`.marker[data-id="${openId}"]`); markerSetIcon(el,i); saveMeta(); } }); container.appendChild(b); } }
 
   function openMarker(id){ if(openId&&openId!==id){ const prev=world.querySelector(`.marker[data-id="${openId}"]`); if(prev){ prev.classList.remove('open'); markerSetIcon(prev, parseInt(prev.dataset.icon||'0',10)); } }
     openId=id; const marker=world.querySelector(`.marker[data-id="${id}"]`); if(marker){ marker.classList.add('open'); markerSetIcon(marker, parseInt(marker.dataset.icon||'0',10)); currentIconIndex=parseInt(marker.dataset.icon||'0',10)||0; }
@@ -268,7 +291,7 @@
   ;[document.querySelector('#sheetHandle'),document.querySelector('#sheetHeader')].forEach(el=>{ el.addEventListener('pointerdown',sheetDragStart,{passive:false}); el.addEventListener('pointermove',sheetDragMove,{passive:false}); el.addEventListener('pointerup',sheetDragEnd); el.addEventListener('pointercancel',sheetDragEnd); });
   sheetClose.addEventListener('click',()=>setSheetHeight('closed'));
 
-  // Mätning (oförändrad mot din 3.5.8)
+  // Mätning (oförändrad)
   let measurePoints=[], measurePath=null, measureLabel=null;
   function setMode(m){ mode=m; btnModeNotes.classList.toggle('active',m==='notes'); btnModeMeasure.classList.toggle('active',m==='measure'); if(m==='measure') closePanels(); if(m==='notes') clearMeasurePreview(); }
   btnModeNotes.addEventListener('click',()=>setMode('notes'));
@@ -280,7 +303,7 @@
   function updateMeasurePath(){ if(!measurePoints.length){ clearMeasurePreview(); return;} const d=measurePoints.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' '); if(!measurePath){ measurePath=document.createElementNS('http://www.w3.org/2000/svg','path'); measurePath.setAttribute('class','measure-line'); overlay.appendChild(measurePath);} measurePath.setAttribute('d',d); const lenPx=totalPixels(), lenMeters=lenPx*getMetersPerPixel(); let target=lenPx/2, acc=0, mid={x:measurePoints[0].x,y:measurePoints[0].y}; for(let i=1;i<measurePoints.length;i++){ const a=measurePoints[i-1], b=measurePoints[i], seg=Math.hypot(b.x-a.x,b.y-a.y); if(acc+seg>=target){ const t=(target-acc)/seg; mid={x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t}; break;} acc+=seg; } if(!measureLabel){ measureLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); measureLabel.setAttribute('class','measure-label'); overlay.appendChild(measureLabel);} measureLabel.setAttribute('x',mid.x); measureLabel.setAttribute('y',mid.y-10); const km=lenMeters/1000, days=Math.max(1, Math.round(km/40)); const daysText=(days===1)?'1 dags resa':`${days} dagars resa`; measureLabel.textContent=(lenMeters>=1000)?`${km.toFixed(2)} km ≈ ${daysText}`:`${Math.round(lenMeters)} m`; }
   stage.addEventListener('click',e=>{ if(mode!=='measure') return; const r=stage.getBoundingClientRect(); const wx=(e.clientX-r.left-tx)/scale, wy=(e.clientY-r.top-ty)/scale; measurePoints.push({x:wx,y:wy}); updateMeasurePath(); });
 
-  // Export (ikonmapp + @2x behålls)
+  // Export (icons/ + @2x)
   async function fetchBlob(url){ const r=await fetch(url); if(!r.ok) throw new Error('404 '+url); return await r.blob(); }
   async function blobToImage(blob){ return await new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(blob); }); }
   async function make2xBlob(blob1x, mimeHint){ const img = await blobToImage(blob1x); const c=document.createElement('canvas'); const w=(img.naturalWidth||img.width||32)*2; const h=(img.naturalHeight||img.height||32)*2; c.width=w; c.height=h; const cx=c.getContext('2d'); cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high'; cx.drawImage(img,0,0,w,h); const mime = (mimeHint && /^image\//.test(mimeHint)) ? mimeHint : 'image/png'; return await new Promise(res=>c.toBlob(b=>res(b), mime, 0.92)); }
@@ -290,8 +313,8 @@
   btnExport.addEventListener('click',()=>{ if(IS_PLAYER) return; exportZip(); });
 
   async function init(){ imgW=map.naturalWidth; imgH=map.naturalHeight; if(IS_PLAYER){ btnExport.style.display='none'; pasteHint?.style?.setProperty('display','none'); editorBtns?.style?.setProperty('display','none'); sheetHint?.style?.setProperty('display','none'); iconPicker.style.display='none'; mIconPicker.style.display='none'; noteBody?.setAttribute('contenteditable','false'); sheetBody?.setAttribute('contenteditable','false'); await loadAllFromJSON(); } else { await openDB(); await loadAllFromLocal(); }
-    fitToScreenAndCenter(); clampPan(); applyTransform(); if(!IS_PLAYER){ buildIconPicker(iconPicker,true); buildIconPicker(mIconPicker,false); } bindOnce(); updateScaleBar(); }
-  if(map.complete&&map.naturalWidth) init(); else map.onload=init; window.addEventListener('resize',()=>{clampPan(); applyTransform(); updateScaleBar();});
+    fitToScreenAndCenter(); clampPan(); applyTransform(); if(!IS_PLAYER){ buildIconPicker(iconPicker,true); buildIconPicker(mIconPicker,false); } bindOnce(); if(typeof updateScaleBar==='function') updateScaleBar(); }
+  if(map.complete&&map.naturalWidth) init(); else map.onload=init; window.addEventListener('resize',()=>{clampPan(); applyTransform(); if(typeof updateScaleBar==='function') updateScaleBar();});
 
   // Hjälp för not-bilder i export
   function dataURLtoImage(dataURL){return new Promise((res,rej)=>{const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.decoding='async'; img.src=dataURL;});}
@@ -300,6 +323,9 @@
   function parseHTML(html){ const d=document.createElement('div'); d.innerHTML=html; return d; }
   async function processNoteHTML(html,zipImages,seen){ const root=parseHTML(html); const imgs=[...root.querySelectorAll('img')]; for(const img of imgs){ const src=img.getAttribute('src')||''; if(!src.startsWith('data:image/')) continue; const blob=await imageToWebPBlob(src); const arr=await blob.arrayBuffer(); const hash=await crypto.subtle.digest('SHA-1',arr).then(h=>Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join('')); const ext='webp'; const filename=`images/${hash}.${ext}`; if(!seen.has(hash)){ seen.add(hash); zipImages.file(`${hash}.${ext}`, new Uint8Array(arr)); } img.setAttribute('src',filename); img.removeAttribute('width'); img.removeAttribute('height'); } return root.innerHTML; }
 })();
+
+// Fallback för skalstreck om funktionen saknas i din miljö
+function updateScaleBar(){ try{ const sb=document.getElementById('sbBar'); const lbl=document.getElementById('sbLabel'); if(!sb||!lbl) return; const px=sb.clientWidth||120; const metersPerPixel=(250000/1073.6); const km=(px*metersPerPixel/1000).toFixed(1); lbl.textContent=`${km} km`; }catch(_){} }
 </script>
 </body>
 </html>
