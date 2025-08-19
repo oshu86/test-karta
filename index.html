@@ -124,13 +124,13 @@
   // === Parametrar för synlighet & storlek ===
   // Ikoner är osynliga från helt ut-zoomat läge tills zoom når en brytpunkt.
   // Vi arbetar i "normaliserad zoom" z = scale / startScale.
-  const Z_APPEAR_START = 6.30;  // under detta: 0% synligt
-  const Z_APPEAR_END   = 8.00;  // över detta: 100% synligt
+  const Z_APPEAR_START = 12.30;  // under detta: 0% synligt
+  const Z_APPEAR_END   = 15.00;  // över detta: 100% synligt
 
   // Skärmstorlek vid full synlighet. Olika på mobil vs desktop.
   const IS_MOBILE = matchMedia('(max-width:820px)').matches;
-  const ICON_TARGET_PX = IS_MOBILE ? 75 : 75;
-  const ICON_MAX_PX    = IS_MOBILE ? 120 : 120; // övre spärr så inget blir groteskt
+  const ICON_TARGET_PX = IS_MOBILE ? 42 : 42;
+  const ICON_MAX_PX    = IS_MOBILE ? 88 : 88; // övre spärr så inget blir groteskt
 
   const WEBP_QUALITY=0.8, MAX_IMG_EDGE=2560;
   const setVH=()=>document.documentElement.style.setProperty('--vh',(visualViewport?visualViewport.height:window.innerHeight)*.01+'px'); setVH(); (visualViewport||window).addEventListener('resize',setVH);
