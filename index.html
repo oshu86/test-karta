@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>index – Interaktiv karta (v3.5.7 – export icons/ + auto-@2x)</title>
+<title>index – Interaktiv karta (v3.5.8 – konstant drag-hitbox)</title>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   :root{--bg:#0f1115;--ink:#e6e6e6;--muted:#2a3142;--panel:#141822;--shadow:rgba(0,0,0,.45);--accent:#ffd166;--vh:1vh;--marker-size:38px}
@@ -14,9 +14,14 @@
   #world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
   #map{display:block;user-select:none;-webkit-user-drag:none;pointer-events:none;max-width:none}
 
+  /* === Marker & konstant hitbox === */
   .marker{position:absolute;width:var(--marker-size);height:var(--marker-size);transform:translate(-50%,-100%);cursor:pointer}
   .marker.open{filter:drop-shadow(0 0 6px var(--accent))}
-  .marker img{width:100%;height:100%;display:block;object-fit:contain;image-rendering:auto;backface-visibility:hidden}
+  .marker img{width:100%;height:100%;display:block;object-fit:contain;image-rendering:auto;backface-visibility:hidden;pointer-events:none}
+  /* Pseudo-element som fungerar som träffyta för drag – håller konstant px-storlek oavsett zoom */
+  .marker::before{content:"";position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:16px;transform:translate(-50%,-50%) scale(var(--hit-comp,1));pointer-events:auto;background:transparent}
+  /* Debug: visa ring runt hitboxen vid behov */
+  /* .marker::before{outline:1px dashed rgba(255,255,255,.3);} */
 
   #sidebar{position:fixed;left:0;top:0;height:100dvh;width:360px;max-width:90vw;background:rgba(20,24,34,.96);border-right:1px solid var(--muted);box-shadow:0 6px 20px var(--shadow);z-index:30;display:none}
   #sidebar header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #262c3b}
@@ -124,21 +129,18 @@
   const IS_MOBILE=matchMedia('(max-width:820px)').matches;
   const METERS_PER_PIXEL=250000/1073.6; const MAP_WIDTH=8192, MAP_HEIGHT=5462; let metersPerPixelOverride=NaN; const getMetersPerPixel=()=>isNaN(metersPerPixelOverride)?METERS_PER_PIXEL:metersPerPixelOverride;
 
-  // === Ikonfiler ===
   const ICONS_NORMAL=['gods.png','kompass.png','person.png','sword.png','town.png'];
   const ICONS_OPEN  =['gods2.png','kompass2.png','person2.png','sword2.png','town2.png'];
   const ICON_COUNT=Math.min(ICONS_NORMAL.length, ICONS_OPEN.length);
 
-  // === Player-läge: läs ikoner från /icons ===
   const ICONS_PATH = IS_PLAYER ? 'icons/' : '';
   function _2xName(name){ const i=name.lastIndexOf('.'); return i>0 ? name.slice(0,i)+'@2x'+name.slice(i) : name+'@2x'; }
   function withPath(name){ return ICONS_PATH + name; }
 
-  // === Storlek (fast start + clamp 6 steg före max in) ===
   let MARKER_BASE_PX = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--marker-size'))||38;
-  const ICON_BASE_PX = 40; // synlig storlek i helt UT-zoomat läge (ändra här för att testa)
+  const ICON_BASE_PX = 43; // startstorlek vid helt UT-zoomat läge
   const CLAMP_STEPS = 6;   // sluta krympa 6 steg före MAX in
-  const STEP_FACTOR = 1.15; // zoomsteg (påverkar hur snabbt krympning sker)
+  const STEP_FACTOR = 2.35;
 
   const stage=$('#stage'), world=$('#world'), map=$('#map'), overlay=$('#overlay');
   const sidebar=$('#sidebar'), sidebarTitle=$('#sidebarTitle'), editorBtns=$('#editorBtns'), noteBody=$('#noteBody'), pasteHint=$('#pasteHint');
@@ -165,9 +167,11 @@
   function applyTransform(){
     world.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
     const cssS = cssScaleForMarker();
+    const hitComp = 1/(scale * cssS); // gör pseudo-hitboxen konstant i px
     world.querySelectorAll('.marker').forEach(el=>{
       const extra=parseFloat(el.dataset.iconScale||'1');
       el.style.transform=`translate(-50%,-100%) scale(${cssS * extra})`;
+      el.style.setProperty('--hit-comp', hitComp);
     });
     overlay.setAttribute('width',imgW); overlay.setAttribute('height',imgH); updateScaleBar();
   }
@@ -183,7 +187,6 @@
   function endPointer(e){ if(e.pointerType!=='mouse'){ pointers.delete(e.pointerId); if(pointers.size<2) lastDist=null; if(pointers.size===0) panStart=null; } if(e.pointerType==='mouse'){ if(leftPan||rightPan) stage.releasePointerCapture?.(e.pointerId); leftPan=false; rightPan=false; panStart=null; } }
   stage.addEventListener('pointerup',endPointer); stage.addEventListener('pointercancel',endPointer);
 
-  // ===== IDB & lagring =====
   const LSK='tyraal_markers_meta_v27', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null; function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{db=r.result; if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:'id'})}; r.onsuccess=()=>{db=r.result; res(db)}; r.onerror=()=>rej(r.error)});} function idbGet(id){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readonly'), st=tx.objectStore(DB_STORE), q=st.get(id); q.onsuccess=()=>res(q.result?.html||''); q.onerror=()=>rej(q.error)});} function idbSet(id,html){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite'), st=tx.objectStore(DB_STORE), q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error)});} function idbBulkGet(ids){return Promise.all(ids.map(id=>idbGet(id).then(html=>({id,html}))));}
   function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id, x:parseFloat(m.style.left), y:parseFloat(m.style.top), icon: parseInt(m.dataset.icon||'0',10)||0 })); try{localStorage.setItem(LSK,JSON.stringify(out))}catch(_){}}
   async function saveHTML(id,html){ if(IS_PLAYER) return; try{await idbSet(id,html)}catch(_){}}
@@ -197,7 +200,7 @@
   function bindOnce(){ if(handlersBound) return; handlersBound=true; if(!IS_PLAYER){ addImgBtn?.addEventListener('click',()=>{imgInput.value=''; imgInput.click();}); imgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(noteBody,fs); imgInput.value='';}); mAddImgBtn?.addEventListener('click',()=>{mImgInput.value=''; mImgInput.click();}); mImgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(sheetBody,fs); mImgInput.value='';}); const pasteH=async (e,target)=>{const items=e.clipboardData?.items||[]; const files=[]; for(const it of items){ if(it.kind==='file'&&it.type.startsWith('image/')) files.push(it.getAsFile()); } if(files.length){ e.preventDefault(); e.stopPropagation(); if(!inserting) await insertImagesFromFiles(target,files); }}; noteBody?.addEventListener('paste',e=>pasteH(e,noteBody)); sheetBody?.addEventListener('paste',e=>pasteH(e,sheetBody)); const inputH=async target=>{ if(openId){ const html=target.innerHTML; store[openId]={html}; await saveHTML(openId,html); saveMeta(); } }; noteBody?.addEventListener('input',()=>inputH(noteBody)); sheetBody?.addEventListener('input',()=>inputH(sheetBody)); }
   }
 
-  // ===== Lightbox =====
+  // Lightbox (oförändrad) ...
   let lbOpen=false, lbScale=1, lbTx=0, lbTy=0, lbImgW=0, lbImgH=0, lbStart=null, lbLastDist=null; const LB_MIN=1, LB_MAX=8;
   function openLightbox(src){ lightboxImg.onload=()=>{ const box=lightboxInner.getBoundingClientRect(); lbImgW=lightboxImg.naturalWidth; lbImgH=lightboxImg.naturalHeight; const s=Math.min(box.width/lbImgW, box.height/lbImgH); lbScale=s; lbTx=(box.width-lbImgW*s)/2; lbTy=(box.height-lbImgH*s)/2; applyLightboxTransform(); }; lightboxImg.src=src; lightbox.style.display='flex'; lbOpen=true; lbStart=null; lbLastDist=null; }
   function closeLightbox(){ lbOpen=false; lightbox.style.display='none'; lightboxImg.src=''; }
@@ -222,27 +225,23 @@
     const baseArr = isOpen? ICONS_OPEN : ICONS_NORMAL;
     const base = baseArr[(Number.isInteger(index)&&index>=0&&index<baseArr.length)?index:0];
     const x1 = withPath(base); const x2 = withPath(_2xName(base));
-    // Ping HEAD på @2x så vi bara annonserar srcset om filen finns (i edit-läget)
     let has2x=false; try{ const r=await fetch(x2,{method:'HEAD'}); has2x=r.ok; }catch{ has2x=false; }
     const img=el.querySelector('img')||el.appendChild(document.createElement('img'));
-    img.decoding='async'; img.loading='eager';
-    img.src = x1;
-    if(has2x||IS_PLAYER){ img.srcset = `${x1} 1x, ${x2} 2x`; } else { img.removeAttribute('srcset'); }
+    img.decoding='async'; img.loading='eager'; img.src = x1; if(has2x||IS_PLAYER){ img.srcset = `${x1} 1x, ${x2} 2x`; } else { img.removeAttribute('srcset'); }
   }
 
   function createMarker(wx,wy,id,saveNow=true,iconIndex=0){ if(!isFinite(wx)||!isFinite(wy)) return null; const m=document.createElement('div'); m.className='marker'; m.dataset.id=id; m.style.left=wx+'px'; m.style.top=wy+'px';
     const img=document.createElement('img'); m.appendChild(img);
     markerSetIcon(m,iconIndex);
-    let dragging=false, canDrag=false, startX=0, startY=0; const TH=5; let suppressNextClick=false;
+    let dragging=false, canDrag=false, startX=0, startY=0; const TH=4; let suppressNextClick=false;
     m.addEventListener('click',ev=>{ if(suppressNextClick){suppressNextClick=false;return;} ev.stopPropagation(); if(openId===id) closePanels(); else openMarker(id); });
-    m.addEventListener('pointerdown',ev=>{ if(mode!=='notes'||IS_PLAYER) return; if(ev.pointerType==='mouse'&&ev.button!==0) return; canDrag=ev.altKey||ev.shiftKey; dragging=false; startX=ev.clientX; startY=ev.clientY; if(canDrag){ document.body.classList.add('grabbing'); stage.classList.add('grabbing'); m.setPointerCapture(ev.pointerId);} ev.stopPropagation(); });
+    m.addEventListener('pointerdown',ev=>{ if(mode!=='notes'||IS_PLAYER) return; if(ev.pointerType==='mouse'&&ev.button!==0) return; canDrag=ev.altKey||ev.shiftKey; dragging=false; startX=ev.clientX; startY=ev.clientY; if(canDrag){ document.body.classList.add('grabbing'); stage.classList.add('grabbing'); m.setPointerCapture?.(ev.pointerId);} ev.stopPropagation(); });
     m.addEventListener('pointermove',ev=>{ if(!canDrag) return; const dx=ev.clientX-startX, dy=ev.clientY-startY; if(!dragging&&(Math.abs(dx)>TH||Math.abs(dy)>TH)) dragging=true; if(dragging){ const {wx,wy}=clientToWorldXY(ev.clientX,ev.clientY); m.style.left=wx+'px'; m.style.top=wy+'px'; } });
     m.addEventListener('pointerup',ev=>{ if(dragging){suppressNextClick=true; saveMeta();} dragging=false; canDrag=false; document.body.classList.remove('grabbing'); stage.classList.remove('grabbing'); });
     m.addEventListener('contextmenu',async ev=>{ if(IS_PLAYER) return; ev.preventDefault(); if(confirm('Ta bort denna markering och dess notis?')){ if(openId===id) closePanels(); world.removeChild(m); delete store[id]; saveMeta(); try{await idbSet(id,'')}catch(_){}} });
     world.appendChild(m); if(saveNow) saveMeta(); return m; }
 
-  let currentIconIndex=0; 
-  function buildIconPicker(container,small=true){ if(IS_PLAYER){ container.style.display='none'; container.innerHTML=''; return; } container.innerHTML=''; for(let i=0;i<ICON_COUNT;i++){ const b=document.createElement('button'); b.type='button'; b.className= small?'iconopt':'miconopt'; b.style.backgroundImage=`url('${withPath(ICONS_NORMAL[i])}')`; b.title=`Ikon ${i+1}`; if(i===currentIconIndex) b.classList.add('active'); b.addEventListener('click',()=>{ if(IS_PLAYER) return; currentIconIndex=i; [...container.parentElement.querySelectorAll('.iconopt, .miconopt')].forEach(x=>x.classList.remove('active')); b.classList.add('active'); if(openId){ const el=world.querySelector(`.marker[data-id="${openId}"]`); markerSetIcon(el,i); saveMeta(); } }); container.appendChild(b); } }
+  let currentIconIndex=0; function buildIconPicker(container,small=true){ if(IS_PLAYER){ container.style.display='none'; container.innerHTML=''; return; } container.innerHTML=''; for(let i=0;i<ICON_COUNT;i++){ const b=document.createElement('button'); b.type='button'; b.className= small?'iconopt':'miconopt'; b.style.backgroundImage=`url('${withPath(ICONS_NORMAL[i])}')`; b.title=`Ikon ${i+1}`; if(i===currentIconIndex) b.classList.add('active'); b.addEventListener('click',()=>{ if(IS_PLAYER) return; currentIconIndex=i; [...container.parentElement.querySelectorAll('.iconopt, .miconopt')].forEach(x=>x.classList.remove('active')); b.classList.add('active'); if(openId){ const el=world.querySelector(`.marker[data-id="${openId}"]`); markerSetIcon(el,i); saveMeta(); } }); container.appendChild(b); } }
 
   function openMarker(id){ if(openId&&openId!==id){ const prev=world.querySelector(`.marker[data-id="${openId}"]`); if(prev){ prev.classList.remove('open'); markerSetIcon(prev, parseInt(prev.dataset.icon||'0',10)); } }
     openId=id; const marker=world.querySelector(`.marker[data-id="${id}"]`); if(marker){ marker.classList.add('open'); markerSetIcon(marker, parseInt(marker.dataset.icon||'0',10)); currentIconIndex=parseInt(marker.dataset.icon||'0',10)||0; }
@@ -252,7 +251,7 @@
   function closePanels(){ sidebar.style.display='none'; sheet.style.display='none'; const prev=openId?world.querySelector(`.marker[data-id="${openId}"]`):null; if(prev){ prev.classList.remove('open'); markerSetIcon(prev, parseInt(prev.dataset.icon||'0',10)); } openId=null; }
   stage.addEventListener('click',e=>{ if(mode!=='notes') return; if(e.target.closest('.marker')) return; closePanels(); });
 
-  // ===== Rullgardin (iOS swipe) =====
+  // Rullgardin (oförändrad)
   let mode='notes', sheetState='half', sheetOffsetY=0; function sizes(){ const vh=(visualViewport?visualViewport.height:window.innerHeight); return {half:Math.round(vh*.50), full:Math.round(vh*.97), header:74}; }
   function closedOffset(){ const S=sizes(); return S.half+40; }
   function applySheetTransformOffset(o){ sheetOffsetY=o; sheetPanel.style.transform=`translateY(${Math.max(0,o)}px)`; }
@@ -264,7 +263,7 @@
   ;[document.querySelector('#sheetHandle'),document.querySelector('#sheetHeader')].forEach(el=>{ el.addEventListener('pointerdown',sheetDragStart,{passive:false}); el.addEventListener('pointermove',sheetDragMove,{passive:false}); el.addEventListener('pointerup',sheetDragEnd); el.addEventListener('pointercancel',sheetDragEnd); });
   sheetClose.addEventListener('click',()=>setSheetHeight('closed'));
 
-  // ===== Mätning =====
+  // Mätning (oförändrad)
   let measurePoints=[], measurePath=null, measureLabel=null;
   function setMode(m){ mode=m; btnModeNotes.classList.toggle('active',m==='notes'); btnModeMeasure.classList.toggle('active',m==='measure'); if(m==='measure') closePanels(); if(m==='notes') clearMeasurePreview(); }
   btnModeNotes.addEventListener('click',()=>setMode('notes'));
@@ -276,28 +275,25 @@
   function updateMeasurePath(){ if(!measurePoints.length){ clearMeasurePreview(); return;} const d=measurePoints.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' '); if(!measurePath){ measurePath=document.createElementNS('http://www.w3.org/2000/svg','path'); measurePath.setAttribute('class','measure-line'); overlay.appendChild(measurePath);} measurePath.setAttribute('d',d); const lenPx=totalPixels(), lenMeters=lenPx*getMetersPerPixel(); let target=lenPx/2, acc=0, mid={x:measurePoints[0].x,y:measurePoints[0].y}; for(let i=1;i<measurePoints.length;i++){ const a=measurePoints[i-1], b=measurePoints[i], seg=Math.hypot(b.x-a.x,b.y-a.y); if(acc+seg>=target){ const t=(target-acc)/seg; mid={x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t}; break;} acc+=seg; } if(!measureLabel){ measureLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); measureLabel.setAttribute('class','measure-label'); overlay.appendChild(measureLabel);} measureLabel.setAttribute('x',mid.x); measureLabel.setAttribute('y',mid.y-10); const km=lenMeters/1000, days=Math.max(1, Math.round(km/40)); const daysText=(days===1)?'1 dags resa':`${days} dagars resa`; measureLabel.textContent=(lenMeters>=1000)?`${km.toFixed(2)} km ≈ ${daysText}`:`${Math.round(lenMeters)} m`; }
   stage.addEventListener('click',e=>{ if(mode!=='measure') return; const r=stage.getBoundingClientRect(); const wx=(e.clientX-r.left-tx)/scale, wy=(e.clientY-r.top-ty)/scale; measurePoints.push({x:wx,y:wy}); updateMeasurePath(); });
 
-  // === Export: icons/ + auto-@2x ===
+  // Export (icons/ + @2x) – oförändrat från 3.5.7
   async function fetchBlob(url){ const r=await fetch(url); if(!r.ok) throw new Error('404 '+url); return await r.blob(); }
   async function blobToImage(blob){ return await new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(blob); }); }
   async function make2xBlob(blob1x, mimeHint){ const img = await blobToImage(blob1x); const c=document.createElement('canvas'); const w=(img.naturalWidth||img.width||32)*2; const h=(img.naturalHeight||img.height||32)*2; c.width=w; c.height=h; const cx=c.getContext('2d'); cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high'; cx.drawImage(img,0,0,w,h); const mime = (mimeHint && /^image\//.test(mimeHint)) ? mimeHint : 'image/png'; return await new Promise(res=>c.toBlob(b=>res(b), mime, 0.92)); }
   async function writeIconsFolderToZip(zip){ const folder = zip.folder('icons'); const uniq = new Set([].concat(ICONS_NORMAL, ICONS_OPEN)); for(const name of uniq){ const src1 = withPath(name).replace(/^icons\//,''); let blob1x=null, mime1x='image/png'; try{ blob1x = await fetchBlob(src1); mime1x = blob1x.type||mime1x; }catch{ console.warn('Ikon saknas (1x):', src1); continue; } folder.file(name, blob1x); const name2x = _2xName(name); const src2 = withPath(name2x).replace(/^icons\//,''); try{ const blob2x = await fetchBlob(src2); folder.file(name2x, blob2x); }catch{ try{ const gen2x = await make2xBlob(blob1x, mime1x); if(gen2x) folder.file(name2x, gen2x); }catch(err){ console.warn('Kunde inte generera @2x för', name, err); } } } }
 
   async function exportZip(){ try{ await openDB(); const meta=JSON.parse(localStorage.getItem(LSK)||'[]'); const htmls=await idbBulkGet(meta.map(m=>m.id)); const htmlById={}; htmls.forEach(({id,html})=>htmlById[id]=html||''); const zip=new JSZip(); const imagesFolder=zip.folder('images'); const seen=new Set(); const outMarkers=[]; for(const m of meta){ const processedHTML=await processNoteHTML(htmlById[m.id]||'', imagesFolder, seen); outMarkers.push({id:m.id,x:m.x,y:m.y,icon:m.icon||0,html:processedHTML}); } const payload={exportedAt:new Date().toISOString(), metersPerPixel:getMetersPerPixel(), markers:outMarkers}; zip.file('data.json', JSON.stringify(payload, null, 2)); await writeIconsFolderToZip(zip); const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='export.zip'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href); } catch(err){ console.error(err); alert('Export misslyckades: '+err.message); } }
-
   btnExport.addEventListener('click',()=>{ if(IS_PLAYER) return; exportZip(); });
 
-  // ===== Init =====
   async function init(){ imgW=map.naturalWidth; imgH=map.naturalHeight; if(IS_PLAYER){ btnExport.style.display='none'; pasteHint?.style?.setProperty('display','none'); editorBtns?.style?.setProperty('display','none'); sheetHint?.style?.setProperty('display','none'); iconPicker.style.display='none'; mIconPicker.style.display='none'; noteBody?.setAttribute('contenteditable','false'); sheetBody?.setAttribute('contenteditable','false'); await loadAllFromJSON(); } else { await openDB(); await loadAllFromLocal(); }
     fitToScreenAndCenter(); clampPan(); applyTransform(); if(!IS_PLAYER){ buildIconPicker(iconPicker,true); buildIconPicker(mIconPicker,false); } bindOnce(); updateScaleBar(); }
   if(map.complete&&map.naturalWidth) init(); else map.onload=init; window.addEventListener('resize',()=>{clampPan(); applyTransform(); updateScaleBar();});
 
-  // ===== Hjälpfunktioner för export av notbilder =====
+  // Hjälp för not-bilder i export
   function dataURLtoImage(dataURL){return new Promise((res,rej)=>{const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.decoding='async'; img.src=dataURL;});}
   function canvasToBlob(canvas,mime,quality){return new Promise(res=>{ if(canvas.toBlob){ canvas.toBlob(b=>res(b),mime,quality);} else { const data=canvas.toDataURL(mime,quality), bin=atob(data.split(',')[1]); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); res(new Blob([arr],{type:mime})); } })}
   async function imageToWebPBlob(dataURL){ const img=await dataURLtoImage(dataURL); let {width:w,height:h}=img; const s=Math.min(1, MAX_IMG_EDGE/Math.max(w,h)); if(s<1){ w=Math.round(w*s); h=Math.round(h*s); } const c=document.createElement('canvas'); c.width=w; c.height=h; const cx=c.getContext('2d'); cx.drawImage(img,0,0,w,h); let blob=await canvasToBlob(c,'image/webp',WEBP_QUALITY); if(!blob||blob.size===0) blob=await canvasToBlob(c,'image/jpeg',0.85); return blob; }
   function parseHTML(html){ const d=document.createElement('div'); d.innerHTML=html; return d; }
   async function processNoteHTML(html,zipImages,seen){ const root=parseHTML(html); const imgs=[...root.querySelectorAll('img')]; for(const img of imgs){ const src=img.getAttribute('src')||''; if(!src.startsWith('data:image/')) continue; const blob=await imageToWebPBlob(src); const arr=await blob.arrayBuffer(); const hash=await crypto.subtle.digest('SHA-1',arr).then(h=>Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join('')); const ext='webp'; const filename=`images/${hash}.${ext}`; if(!seen.has(hash)){ seen.add(hash); zipImages.file(`${hash}.${ext}`, new Uint8Array(arr)); } img.setAttribute('src',filename); img.removeAttribute('width'); img.removeAttribute('height'); } return root.innerHTML; }
-
 })();
 </script>
 </body>
