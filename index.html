@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>index – Interaktiv karta (v3.5.8 – konstant drag-hitbox)</title>
+<title>index – Interaktiv karta (v3.5.9 – låst ikonstorlek + retina-fix)</title>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   :root{--bg:#0f1115;--ink:#e6e6e6;--muted:#2a3142;--panel:#141822;--shadow:rgba(0,0,0,.45);--accent:#ffd166;--vh:1vh;--marker-size:38px}
@@ -18,10 +18,8 @@
   .marker{position:absolute;width:var(--marker-size);height:var(--marker-size);transform:translate(-50%,-100%);cursor:pointer}
   .marker.open{filter:drop-shadow(0 0 6px var(--accent))}
   .marker img{width:100%;height:100%;display:block;object-fit:contain;image-rendering:auto;backface-visibility:hidden;pointer-events:none}
-  /* Pseudo-element som fungerar som träffyta för drag – håller konstant px-storlek oavsett zoom */
+  /* Konstanta px-träffytor oavsett zoom */
   .marker::before{content:"";position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:16px;transform:translate(-50%,-50%) scale(var(--hit-comp,1));pointer-events:auto;background:transparent}
-  /* Debug: visa ring runt hitboxen vid behov */
-  /* .marker::before{outline:1px dashed rgba(255,255,255,.3);} */
 
   #sidebar{position:fixed;left:0;top:0;height:100dvh;width:360px;max-width:90vw;background:rgba(20,24,34,.96);border-right:1px solid var(--muted);box-shadow:0 6px 20px var(--shadow);z-index:30;display:none}
   #sidebar header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #262c3b}
@@ -137,10 +135,9 @@
   function _2xName(name){ const i=name.lastIndexOf('.'); return i>0 ? name.slice(0,i)+'@2x'+name.slice(i) : name+'@2x'; }
   function withPath(name){ return ICONS_PATH + name; }
 
+  // Visuell storlek (på skärmen) vi siktar på – lite större på mobil för tydlighet
+  const ICON_TARGET_PX = IS_MOBILE ? 72 : 72; // önskad skärmpixelstorlek
   let MARKER_BASE_PX = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--marker-size'))||38;
-  const ICON_BASE_PX = 40; // startstorlek vid helt UT-zoomat läge
-  const CLAMP_STEPS = 7;   // sluta krympa 6 steg före MAX in
-  const STEP_FACTOR = 2.2;
 
   const stage=$('#stage'), world=$('#world'), map=$('#map'), overlay=$('#overlay');
   const sidebar=$('#sidebar'), sidebarTitle=$('#sidebarTitle'), editorBtns=$('#editorBtns'), noteBody=$('#noteBody'), pasteHint=$('#pasteHint');
@@ -152,18 +149,24 @@
   const iconPicker=$('#iconPicker'), mIconPicker=$('#mIconPicker');
   function $(s){return document.querySelector(s)}
 
-  let scale=1, MIN=1, MAX=24, startScale=1, tx=0, ty=0, imgW=0, imgH=0, clampStartScale=0;
+  let scale=1, MIN=1, MAX=24, startScale=1, tx=0, ty=0, imgW=0, imgH=0;
   const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
   function getPanBounds(){ const vw=stage.clientWidth, vh=stage.clientHeight, w=imgW*scale, h=imgH*scale, cx=(vw-w)/2, cy=(vh-h)/2; if(w<=vw&&h<=vh)return{minTx:cx,maxTx:cx,minTy:cy,maxTy:cy}; if(w<=vw)return{minTx:cx,maxTx:cx,minTy:Math.min(0,vh-h),maxTy:0}; if(h<=vh)return{minTx:Math.min(0,vw-w),maxTx:0,minTy:cy,maxTy:cy}; return{minTx:Math.min(0,vw-w),maxTx:0,minTy:Math.min(0,vh-h),maxTy:0}; }
   function clampPan(){ const b=getPanBounds(); tx=clamp(tx,b.minTx,b.maxTx); ty=clamp(ty,b.minTy,b.maxTy); }
 
-  function recalcClamp(){ clampStartScale = MAX / Math.pow(STEP_FACTOR, CLAMP_STEPS); }
+  // === NYTT: Helt konstant skärmstorlek för markörer över hela zoomspannet ===
   function cssScaleForMarker(){
-    const baseK = ICON_BASE_PX / MARKER_BASE_PX; const s = scale;
-    const unclamped = baseK * (MIN / (s*s));
-    const clamped   = baseK * (MIN / (clampStartScale * s));
-    return Math.max(unclamped, clamped);
+    const s = scale; // världens zoom
+    // För att hålla skärmpixlarna konstanta: s * cssS * MARKER_BASE_PX = ICON_TARGET_PX
+    let cssS = ICON_TARGET_PX / (MARKER_BASE_PX * s);
+    // Lätta skyddsräcken om någon manuellt ändrar variablerna
+    const MIN_PX = 28, MAX_PX = 96;
+    const pxNow = MARKER_BASE_PX * s * cssS; // bör = ICON_TARGET_PX
+    if(pxNow < MIN_PX) cssS *= (MIN_PX/pxNow);
+    if(pxNow > MAX_PX) cssS *= (MAX_PX/pxNow);
+    return cssS;
   }
+
   function applyTransform(){
     world.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
     const cssS = cssScaleForMarker();
@@ -177,7 +180,7 @@
   }
 
   function zoomAt(sx,sy,f){ const r=stage.getBoundingClientRect(), x=sx-r.left, y=sy-r.top, wx=(x-tx)/scale, wy=(y-ty)/scale, ns=clamp(scale*f,MIN,MAX); tx=x-wx*ns; ty=y-wy*ns; scale=ns; clampPan(); applyTransform(); }
-  function fitToScreenAndCenter(){ const vw=stage.clientWidth, vh=stage.clientHeight, w0=map.naturalWidth||MAP_WIDTH, h0=map.naturalHeight||MAP_HEIGHT; imgW=w0; imgH=h0; const s=Math.min(vw/imgW,vh/imgH); startScale=s; scale=s; MIN=startScale*.98; recalcClamp(); const w=imgW*scale, h=imgH*scale; tx=(vw-w)/2; ty=(vh-h)/2; applyTransform(); }
+  function fitToScreenAndCenter(){ const vw=stage.clientWidth, vh=stage.clientHeight, w0=map.naturalWidth||MAP_WIDTH, h0=map.naturalHeight||MAP_HEIGHT; imgW=w0; imgH=h0; const s=Math.min(vw/imgW,vh/imgH); startScale=s; scale=s; MIN=startScale*.98; const w=imgW*scale, h=imgH*scale; tx=(vw-w)/2; ty=(vh-h)/2; applyTransform(); }
   stage.addEventListener('wheel',e=>{e.preventDefault(); zoomAt(e.clientX,e.clientY, e.deltaY<0?1.15:1/1.15)},{passive:false});
   const pointers=new Map(); let lastDist=null, leftPan=false, rightPan=false, panStart=null;
   stage.addEventListener('pointerdown',e=>{const onMarker=!!e.target.closest('.marker'); if(e.pointerType==='mouse'&&e.button===2){ rightPan=true; panStart={x:e.clientX,y:e.clientY,tx,ty}; window.addEventListener('contextmenu',ev=>ev.preventDefault(),{once:true}); stage.setPointerCapture(e.pointerId);} if(e.pointerType==='mouse'&&e.button===0&&!onMarker){ leftPan=true; panStart={x:e.clientX,y:e.clientY,tx,ty}; stage.setPointerCapture(e.pointerId);} if(e.pointerType!=='mouse'){ pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); stage.setPointerCapture(e.pointerId);} });
@@ -187,9 +190,9 @@
   function endPointer(e){ if(e.pointerType!=='mouse'){ pointers.delete(e.pointerId); if(pointers.size<2) lastDist=null; if(pointers.size===0) panStart=null; } if(e.pointerType==='mouse'){ if(leftPan||rightPan) stage.releasePointerCapture?.(e.pointerId); leftPan=false; rightPan=false; panStart=null; } }
   stage.addEventListener('pointerup',endPointer); stage.addEventListener('pointercancel',endPointer);
 
-  const LSK='tyraal_markers_meta_v27', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null; function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{db=r.result; if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:'id'})}; r.onsuccess=()=>{db=r.result; res(db)}; r.onerror=()=>rej(r.error)});} function idbGet(id){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readonly'), st=tx.objectStore(DB_STORE), q=st.get(id); q.onsuccess=()=>res(q.result?.html||''); q.onerror=()=>rej(q.error)});} function idbSet(id,html){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite'), st=tx.objectStore(DB_STORE), q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error)});} function idbBulkGet(ids){return Promise.all(ids.map(id=>idbGet(id).then(html=>({id,html}))));}
-  function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id, x:parseFloat(m.style.left), y:parseFloat(m.style.top), icon: parseInt(m.dataset.icon||'0',10)||0 })); try{localStorage.setItem(LSK,JSON.stringify(out))}catch(_){}}
-  async function saveHTML(id,html){ if(IS_PLAYER) return; try{await idbSet(id,html)}catch(_){}}
+  const LSK='tyraal_markers_meta_v28', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null; function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{db=r.result; if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:'id'})}; r.onsuccess=()=>{db=r.result; res(db)}; r.onerror=()=>rej(r.error)});} function idbGet(id){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readonly'), st=tx.objectStore(DB_STORE), q=st.get(id); q.onsuccess=()=>res(q.result?.html||''); q.onerror=()=>rej(q.error)});} function idbSet(id,html){return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite'), st=tx.objectStore(DB_STORE), q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error)});} function idbBulkGet(ids){return Promise.all(ids.map(id=>idbGet(id).then(html=>({id,html}))));}
+  function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id, x:parseFloat(m.style.left), y:parseFloat(m.style.top), icon: parseInt(m.dataset.icon||'0',10)||0 })); try{localStorage.setItem(LSK,JSON.stringify(out))}catch(_){} }
+  async function saveHTML(id,html){ if(IS_PLAYER) return; try{await idbSet(id,html)}catch(_){} }
   async function loadAllFromLocal(){ const meta=JSON.parse(localStorage.getItem(LSK)||'[]'); meta.forEach(o=>createMarker(o.x,o.y,o.id,false, o.icon||0)); const htmls=await idbBulkGet(meta.map(m=>m.id)); htmls.forEach(({id,html})=>{store[id]={html:html||''}}); }
   async function loadAllFromJSON(){ try{ const r=await fetch('data.json',{cache:'no-store'}); if(!r.ok) throw new Error('Kunde inte läsa data.json'); const data=await r.json(); if(typeof data.metersPerPixel==='number'&&isFinite(data.metersPerPixel)) metersPerPixelOverride=data.metersPerPixel; if(Array.isArray(data.markers)){ data.markers.forEach(m=>{ createMarker(m.x,m.y,m.id,false, m.icon||0); store[m.id]={html:m.html||''}; }); } } catch(err){ console.error(err); alert('Kunde inte ladda spelardata (data.json).'); } }
 
@@ -200,7 +203,7 @@
   function bindOnce(){ if(handlersBound) return; handlersBound=true; if(!IS_PLAYER){ addImgBtn?.addEventListener('click',()=>{imgInput.value=''; imgInput.click();}); imgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(noteBody,fs); imgInput.value='';}); mAddImgBtn?.addEventListener('click',()=>{mImgInput.value=''; mImgInput.click();}); mImgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(sheetBody,fs); mImgInput.value='';}); const pasteH=async (e,target)=>{const items=e.clipboardData?.items||[]; const files=[]; for(const it of items){ if(it.kind==='file'&&it.type.startsWith('image/')) files.push(it.getAsFile()); } if(files.length){ e.preventDefault(); e.stopPropagation(); if(!inserting) await insertImagesFromFiles(target,files); }}; noteBody?.addEventListener('paste',e=>pasteH(e,noteBody)); sheetBody?.addEventListener('paste',e=>pasteH(e,sheetBody)); const inputH=async target=>{ if(openId){ const html=target.innerHTML; store[openId]={html}; await saveHTML(openId,html); saveMeta(); } }; noteBody?.addEventListener('input',()=>inputH(noteBody)); sheetBody?.addEventListener('input',()=>inputH(sheetBody)); }
   }
 
-  // Lightbox (oförändrad) ...
+  // Lightbox
   let lbOpen=false, lbScale=1, lbTx=0, lbTy=0, lbImgW=0, lbImgH=0, lbStart=null, lbLastDist=null; const LB_MIN=1, LB_MAX=8;
   function openLightbox(src){ lightboxImg.onload=()=>{ const box=lightboxInner.getBoundingClientRect(); lbImgW=lightboxImg.naturalWidth; lbImgH=lightboxImg.naturalHeight; const s=Math.min(box.width/lbImgW, box.height/lbImgH); lbScale=s; lbTx=(box.width-lbImgW*s)/2; lbTy=(box.height-lbImgH*s)/2; applyLightboxTransform(); }; lightboxImg.src=src; lightbox.style.display='flex'; lbOpen=true; lbStart=null; lbLastDist=null; }
   function closeLightbox(){ lbOpen=false; lightbox.style.display='none'; lightboxImg.src=''; }
@@ -219,15 +222,17 @@
 
   stage.addEventListener('dblclick',e=>{ if(mode!=='notes'||IS_PLAYER) return; if(e.target.closest('.marker')||e.target.closest('#sidebar')||e.target.closest('#sheet')) return; e.preventDefault(); const {wx,wy}=clientToWorldXY(e.clientX,e.clientY); const id=uid(); store[id]={html:'Skriv din not här...'}; createMarker(wx,wy,id,true,currentIconIndex); openMarker(id); },{passive:false});
 
+  // === Retina-förbättring: sätt alltid srcset, låt @2x användas där det finns ===
   async function markerSetIcon(el,index){
     el.dataset.icon=String(index||0);
     const isOpen=el.classList.contains('open');
     const baseArr = isOpen? ICONS_OPEN : ICONS_NORMAL;
     const base = baseArr[(Number.isInteger(index)&&index>=0&&index<baseArr.length)?index:0];
     const x1 = withPath(base); const x2 = withPath(_2xName(base));
-    let has2x=false; try{ const r=await fetch(x2,{method:'HEAD'}); has2x=r.ok; }catch{ has2x=false; }
     const img=el.querySelector('img')||el.appendChild(document.createElement('img'));
-    img.decoding='async'; img.loading='eager'; img.src = x1; if(has2x||IS_PLAYER){ img.srcset = `${x1} 1x, ${x2} 2x`; } else { img.removeAttribute('srcset'); }
+    img.decoding='async'; img.loading='eager';
+    img.src = x1;            // 1x alltid säker
+    img.srcset = `${x1} 1x, ${x2} 2x`; // iOS kommer använda 2x om filen finns
   }
 
   function createMarker(wx,wy,id,saveNow=true,iconIndex=0){ if(!isFinite(wx)||!isFinite(wy)) return null; const m=document.createElement('div'); m.className='marker'; m.dataset.id=id; m.style.left=wx+'px'; m.style.top=wy+'px';
@@ -251,7 +256,7 @@
   function closePanels(){ sidebar.style.display='none'; sheet.style.display='none'; const prev=openId?world.querySelector(`.marker[data-id="${openId}"]`):null; if(prev){ prev.classList.remove('open'); markerSetIcon(prev, parseInt(prev.dataset.icon||'0',10)); } openId=null; }
   stage.addEventListener('click',e=>{ if(mode!=='notes') return; if(e.target.closest('.marker')) return; closePanels(); });
 
-  // Rullgardin (oförändrad)
+  // Rullgardin
   let mode='notes', sheetState='half', sheetOffsetY=0; function sizes(){ const vh=(visualViewport?visualViewport.height:window.innerHeight); return {half:Math.round(vh*.50), full:Math.round(vh*.97), header:74}; }
   function closedOffset(){ const S=sizes(); return S.half+40; }
   function applySheetTransformOffset(o){ sheetOffsetY=o; sheetPanel.style.transform=`translateY(${Math.max(0,o)}px)`; }
@@ -263,7 +268,7 @@
   ;[document.querySelector('#sheetHandle'),document.querySelector('#sheetHeader')].forEach(el=>{ el.addEventListener('pointerdown',sheetDragStart,{passive:false}); el.addEventListener('pointermove',sheetDragMove,{passive:false}); el.addEventListener('pointerup',sheetDragEnd); el.addEventListener('pointercancel',sheetDragEnd); });
   sheetClose.addEventListener('click',()=>setSheetHeight('closed'));
 
-  // Mätning (oförändrad)
+  // Mätning (oförändrad mot din 3.5.8)
   let measurePoints=[], measurePath=null, measureLabel=null;
   function setMode(m){ mode=m; btnModeNotes.classList.toggle('active',m==='notes'); btnModeMeasure.classList.toggle('active',m==='measure'); if(m==='measure') closePanels(); if(m==='notes') clearMeasurePreview(); }
   btnModeNotes.addEventListener('click',()=>setMode('notes'));
@@ -275,7 +280,7 @@
   function updateMeasurePath(){ if(!measurePoints.length){ clearMeasurePreview(); return;} const d=measurePoints.map((p,i)=>(i?'L':'M')+p.x+' '+p.y).join(' '); if(!measurePath){ measurePath=document.createElementNS('http://www.w3.org/2000/svg','path'); measurePath.setAttribute('class','measure-line'); overlay.appendChild(measurePath);} measurePath.setAttribute('d',d); const lenPx=totalPixels(), lenMeters=lenPx*getMetersPerPixel(); let target=lenPx/2, acc=0, mid={x:measurePoints[0].x,y:measurePoints[0].y}; for(let i=1;i<measurePoints.length;i++){ const a=measurePoints[i-1], b=measurePoints[i], seg=Math.hypot(b.x-a.x,b.y-a.y); if(acc+seg>=target){ const t=(target-acc)/seg; mid={x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t}; break;} acc+=seg; } if(!measureLabel){ measureLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); measureLabel.setAttribute('class','measure-label'); overlay.appendChild(measureLabel);} measureLabel.setAttribute('x',mid.x); measureLabel.setAttribute('y',mid.y-10); const km=lenMeters/1000, days=Math.max(1, Math.round(km/40)); const daysText=(days===1)?'1 dags resa':`${days} dagars resa`; measureLabel.textContent=(lenMeters>=1000)?`${km.toFixed(2)} km ≈ ${daysText}`:`${Math.round(lenMeters)} m`; }
   stage.addEventListener('click',e=>{ if(mode!=='measure') return; const r=stage.getBoundingClientRect(); const wx=(e.clientX-r.left-tx)/scale, wy=(e.clientY-r.top-ty)/scale; measurePoints.push({x:wx,y:wy}); updateMeasurePath(); });
 
-  // Export (icons/ + @2x) – oförändrat från 3.5.7
+  // Export (ikonmapp + @2x behålls)
   async function fetchBlob(url){ const r=await fetch(url); if(!r.ok) throw new Error('404 '+url); return await r.blob(); }
   async function blobToImage(blob){ return await new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(blob); }); }
   async function make2xBlob(blob1x, mimeHint){ const img = await blobToImage(blob1x); const c=document.createElement('canvas'); const w=(img.naturalWidth||img.width||32)*2; const h=(img.naturalHeight||img.height||32)*2; c.width=w; c.height=h; const cx=c.getContext('2d'); cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high'; cx.drawImage(img,0,0,w,h); const mime = (mimeHint && /^image\//.test(mimeHint)) ? mimeHint : 'image/png'; return await new Promise(res=>c.toBlob(b=>res(b), mime, 0.92)); }

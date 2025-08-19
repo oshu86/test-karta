@@ -1,41 +1,41 @@
 {
-  "exportedAt": "2025-08-19T03:45:04.665Z",
+  "exportedAt": "2025-08-19T05:06:20.708Z",
   "metersPerPixel": 232.8614008941878,
   "markers": [
     {
-      "id": "mkyxn5c",
-      "x": 6403.24,
-      "y": 2848.4,
-      "icon": 2,
-      "html": "Skriv din not här...<img class=\"note-img\" src=\"images/dc74b706ce6e5c352c7db7a0cc2a702372d69f1a.webp\"><img class=\"note-img\" src=\"images/e4fea4444a16172d0b0e9415cddcd37eb68c69c0.webp\"><img class=\"note-img\" src=\"images/abd8181fe1a78ed85f0a9ca84d3ce73babc82136.webp\"><img class=\"note-img\" src=\"images/b630ce721ad9b82aee8de38001436600972ef0c4.webp\">"
-    },
-    {
-      "id": "czrjjc8",
-      "x": 6215.73,
-      "y": 2961.63,
-      "icon": 4,
-      "html": "OJ!<img class=\"note-img\" src=\"images/2f9b22c3a922d10f0d346b2dd419bf732777a631.webp\">"
-    },
-    {
-      "id": "qihbucd",
-      "x": 6136.89,
-      "y": 2700.66,
-      "icon": 3,
-      "html": "Bajsa<br><img class=\"note-img\" src=\"images/1b275dbf3f50f0bc34bbe835caf67fbd9e48bd41.webp\"><img class=\"note-img\" src=\"images/b130ad2257ec34288794bcbfa1477af5975a9fc3.webp\"><img class=\"note-img\" src=\"images/85974a5ad2e662ae7ee77d8651c0889e9b4a2cf3.webp\">"
-    },
-    {
-      "id": "8at7cp1",
-      "x": 3555.5,
-      "y": 1107.69,
-      "icon": 0,
-      "html": "Skriv din not här...<img class=\"note-img\" src=\"images/536eb732425cdd87c8126183ed1851309c3ea6fd.webp\">"
-    },
-    {
-      "id": "dffutt9",
-      "x": 6096.5,
-      "y": 3171.11,
+      "id": "8ne6gwd",
+      "x": 6071.31,
+      "y": 3401.08,
       "icon": 1,
-      "html": "Skriv din not här...<img class=\"note-img\" src=\"images/37aac678452b4a94ccea00c839c41ca7f5ba3194.webp\">"
+      "html": ""
+    },
+    {
+      "id": "tw675jo",
+      "x": 6253.05,
+      "y": 2985.92,
+      "icon": 4,
+      "html": ""
+    },
+    {
+      "id": "26l89jt",
+      "x": 6235.67,
+      "y": 2842.77,
+      "icon": 0,
+      "html": "aldrig <img class=\"note-img\" src=\"images/c94b3e90df482e3398214148b9792881ee6f1b34.webp\"><img class=\"note-img\" src=\"images/4bf86ed73911fe947ff476937df7ebeb9cc3c1de.webp\"><img class=\"note-img\" src=\"images/c4e5bda0809bb71500c95307ef79d56deb1b3b51.webp\"><img class=\"note-img\" src=\"images/e1deccd17b5e407654c966edb7b0e78a4bc591e5.webp\">"
+    },
+    {
+      "id": "yzap2rw",
+      "x": 6236.16,
+      "y": 2646.34,
+      "icon": 3,
+      "html": ""
+    },
+    {
+      "id": "n3ujdly",
+      "x": 6052.88,
+      "y": 3278.19,
+      "icon": 2,
+      "html": ""
     }
   ]
 }
