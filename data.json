@@ -1,11 +1,11 @@
 {
-  "exportedAt": "2025-08-18T23:25:20.531Z",
+  "exportedAt": "2025-08-19T01:08:25.651Z",
   "metersPerPixel": 232.8614008941878,
   "markers": [
     {
       "id": "8pnv0k0",
-      "x": 3566.83,
-      "y": 1145.84,
+      "x": 3548.79,
+      "y": 1096.55,
       "icon": 0,
       "html": "asdasd<img class=\"note-img\" src=\"images/b130ad2257ec34288794bcbfa1477af5975a9fc3.webp\">"
     },
@@ -35,7 +35,21 @@
       "x": 6378.71,
       "y": 2814.12,
       "icon": 4,
-      "html": "sdfsdf<img class=\"note-img\" src=\"images/c94b3e90df482e3398214148b9792881ee6f1b34.webp\">"
+      "html": "sdfsdf<img class=\"note-img\" src=\"images/c94b3e90df482e3398214148b9792881ee6f1b34.webp\"><img class=\"note-img\" src=\"images/b630ce721ad9b82aee8de38001436600972ef0c4.webp\">"
+    },
+    {
+      "id": "6vs3qks",
+      "x": 3598.5,
+      "y": 1097.24,
+      "icon": 0,
+      "html": "Skriv din not här...<img class=\"note-img\" src=\"images/13198efa9b7646921fdcf81e8a5ed0488332d183.webp\">"
+    },
+    {
+      "id": "1fv9wto",
+      "x": 3654.17,
+      "y": 1096.73,
+      "icon": 0,
+      "html": "Skriv din not här...<img class=\"note-img\" src=\"images/0ad865023eacbf0738d7461255535d12ee8d9b54.webp\">"
     }
   ]
 }
