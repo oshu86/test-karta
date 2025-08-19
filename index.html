@@ -138,9 +138,9 @@
   function withPath(name){ return ICONS_PATH + name; }
 
   let MARKER_BASE_PX = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--marker-size'))||38;
-  const ICON_BASE_PX = 43; // startstorlek vid helt UT-zoomat läge
-  const CLAMP_STEPS = 6;   // sluta krympa 6 steg före MAX in
-  const STEP_FACTOR = 2.35;
+  const ICON_BASE_PX = 40; // startstorlek vid helt UT-zoomat läge
+  const CLAMP_STEPS = 7;   // sluta krympa 6 steg före MAX in
+  const STEP_FACTOR = 2.2;
 
   const stage=$('#stage'), world=$('#world'), map=$('#map'), overlay=$('#overlay');
   const sidebar=$('#sidebar'), sidebarTitle=$('#sidebarTitle'), editorBtns=$('#editorBtns'), noteBody=$('#noteBody'), pasteHint=$('#pasteHint');
