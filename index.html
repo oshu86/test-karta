@@ -129,8 +129,8 @@
 
   // Skärmstorlek vid full synlighet. Olika på mobil vs desktop.
   const IS_MOBILE = matchMedia('(max-width:820px)').matches;
-  const ICON_TARGET_PX = IS_MOBILE ? 42 : 42;
-  const ICON_MAX_PX    = IS_MOBILE ? 88 : 88; // övre spärr så inget blir groteskt
+  const ICON_TARGET_PX = IS_MOBILE ? 95 : 95;
+  const ICON_MAX_PX    = IS_MOBILE ? 180 : 180; // övre spärr så inget blir groteskt
 
   const WEBP_QUALITY=0.8, MAX_IMG_EDGE=2560;
   const setVH=()=>document.documentElement.style.setProperty('--vh',(visualViewport?visualViewport.height:window.innerHeight)*.01+'px'); setVH(); (visualViewport||window).addEventListener('resize',setVH);
