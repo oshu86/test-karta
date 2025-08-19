@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2025-08-19T02:21:58.970Z",
+  "exportedAt": "2025-08-19T02:48:28.097Z",
   "metersPerPixel": 232.8614008941878,
   "markers": [
     {
@@ -46,10 +46,17 @@
     },
     {
       "id": "1fv9wto",
-      "x": 3654.17,
-      "y": 1096.73,
+      "x": 3725.6,
+      "y": 1112.12,
       "icon": 0,
       "html": "Skriv din not här...<img class=\"note-img\" src=\"images/0ad865023eacbf0738d7461255535d12ee8d9b54.webp\">"
+    },
+    {
+      "id": "6ry8bmy",
+      "x": 3856.33,
+      "y": 1513.03,
+      "icon": 3,
+      "html": "aldrig <img class=\"note-img\" src=\"images/107a8443e6c6824da035f1c66cd031e6bbec12bb.webp\">"
     }
   ]
 }
