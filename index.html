@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>index v3.6.8</title>
+  <title>index v3.6.9</title>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     :root{--bg:#0f1115;--ink:#e6e6e6;--muted:#2a3142;--panel:#141822;--accent:#ffd166;--vh:1vh}
@@ -175,7 +175,7 @@
   function endPointer(e){ if(e.pointerType!=='mouse'){ pointers.delete(e.pointerId); if(pointers.size<2)lastDist=null; if(pointers.size===0)panStart=null;} if(e.pointerType==='mouse'){ if(leftPan||rightPan)stage.releasePointerCapture?.(e.pointerId); leftPan=false; rightPan=false; panStart=null; } }
   stage.addEventListener('pointerup',endPointer); stage.addEventListener('pointercancel',endPointer);
 
-  const LSK='tyraal_markers_meta_v34', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null;
+  const LSK='tyraal_markers_meta_v35', DB_NAME='tyraal_db', DB_STORE='notes'; let db=null;
   function openDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open(DB_NAME,1); r.onupgradeneeded=()=>{db=r.result; if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:'id'})}; r.onsuccess=()=>{db=r.result; res(db)}; r.onerror=()=>rej(r.error); }); }
   function idbGet(id){ return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readonly'),st=tx.objectStore(DB_STORE),q=st.get(id); q.onsuccess=()=>res(q.result?.html||''); q.onerror=()=>rej(q.error); }); }
   function idbSet(id,html){ return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readwrite'),st=tx.objectStore(DB_STORE),q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error); }); }
@@ -191,37 +191,12 @@
   const store={}; let openId=null,inserting=false,handlersBound=false; function fileToDataURL(f){return new Promise((res,rej)=>{const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f);});}
   async function insertImagesFromFiles(target, files){ if(inserting) return; inserting=true; try{ for(const f of files){ if(!f||!f.type||!f.type.startsWith('image/')) continue; const data=await fileToDataURL(f); const img=document.createElement('img'); img.className='note-img'; img.src=data; attachImageClick(img); target.appendChild(img);} if(openId){ const html=(IS_MOBILE?sheetBody.innerHTML:noteBody.innerHTML); store[openId]={html}; await saveHTML(openId,html); saveMeta(); } } finally{ inserting=false; } }
   function attachImageClick(img){ img.addEventListener('click',e=>{e.stopPropagation(); openLightbox(img.src);}); }
-
-  function execCmd(cmd, target){ try{ target?.focus(); document.execCommand(cmd,false,null); // funkar cross-browser trots deprec.
-  }catch(e){ console.warn('execCommand misslyckades',cmd,e); } }
-
-  function bindOnce(){ if(handlersBound) return; handlersBound=true; if(!IS_PLAYER){
-      // Bilder
-      addImgBtn?.addEventListener('click',()=>{imgInput.value=''; imgInput.click();});
-      imgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(noteBody,fs); imgInput.value='';});
-      mAddImgBtn?.addEventListener('click',()=>{mImgInput.value=''; mImgInput.click();});
-      mImgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(sheetBody,fs); mImgInput.value='';});
-      // Klistra in bilder
-      const pasteH=async (e,target)=>{const items=e.clipboardData?.items||[]; const files=[]; for(const it of items){ if(it.kind==='file'&&it.type.startsWith('image/')) files.push(it.getAsFile()); } if(files.length){ e.preventDefault(); e.stopPropagation(); if(!inserting) await insertImagesFromFiles(target,files); }};
-      noteBody?.addEventListener('paste',e=>pasteH(e,noteBody));
-      sheetBody?.addEventListener('paste',e=>pasteH(e,sheetBody));
-      // Autospara HTML
-      const inputH=async target=>{ if(openId){ const html=target.innerHTML; store[openId]={html}; await saveHTML(openId,html); saveMeta(); } };
-      noteBody?.addEventListener('input',()=>inputH(noteBody));
-      sheetBody?.addEventListener('input',()=>inputH(sheetBody));
-      // Rich text (B/I)
-      btnBold?.addEventListener('click',()=>execCmd('bold', noteBody));
-      btnItalic?.addEventListener('click',()=>execCmd('italic', noteBody));
-      mBtnBold?.addEventListener('click',()=>execCmd('bold', sheetBody));
-      mBtnItalic?.addEventListener('click',()=>execCmd('italic', sheetBody));
-      // Import
-      btnImport.addEventListener('click',()=>importInput.click());
-      importInput.addEventListener('change',handleImportFile);
-    }
+  function execCmd(cmd, target){ try{ target?.focus(); document.execCommand(cmd,false,null);}catch(e){ console.warn('execCommand misslyckades',cmd,e); } }
+  function bindOnce(){ if(handlersBound) return; handlersBound=true; if(!IS_PLAYER){ addImgBtn?.addEventListener('click',()=>{imgInput.value=''; imgInput.click();}); imgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(noteBody,fs); imgInput.value='';}); mAddImgBtn?.addEventListener('click',()=>{mImgInput.value=''; mImgInput.click();}); mImgInput?.addEventListener('change',async e=>{const fs=e.target.files; if(fs?.length) await insertImagesFromFiles(sheetBody,fs); mImgInput.value='';}); const pasteH=async (e,target)=>{const items=e.clipboardData?.items||[]; const files=[]; for(const it of items){ if(it.kind==='file'&&it.type.startsWith('image/')) files.push(it.getAsFile()); } if(files.length){ e.preventDefault(); e.stopPropagation(); if(!inserting) await insertImagesFromFiles(target,files); }}; noteBody?.addEventListener('paste',e=>pasteH(e,noteBody)); sheetBody?.addEventListener('paste',e=>pasteH(e,sheetBody)); const inputH=async target=>{ if(openId){ const html=target.innerHTML; store[openId]={html}; await saveHTML(openId,html); saveMeta(); } }; noteBody?.addEventListener('input',()=>inputH(noteBody)); sheetBody?.addEventListener('input',()=>inputH(sheetBody)); btnBold?.addEventListener('click',()=>execCmd('bold', noteBody)); btnItalic?.addEventListener('click',()=>execCmd('italic', noteBody)); mBtnBold?.addEventListener('click',()=>execCmd('bold', sheetBody)); mBtnItalic?.addEventListener('click',()=>execCmd('italic', sheetBody)); btnImport.addEventListener('click',()=>importInput.click()); importInput.addEventListener('change',handleImportFile); }
   }
 
   // ===== Lightbox =====
-  let lbOpen=false,lbScale=1,lbTx=0,lbTy=0,lbImgW=0,lbImgH=0,lbStart=null,lbLastDist=null; function openLightbox(src){ lightboxImg.onload=()=>{ const box=lightboxInner.getBoundingClientRect(); lbImgW=lightboxImg.naturalWidth; lbImgH=lightboxImg.naturalHeight; const s=Math.min(box.width/lbImgW,box.height/lbImgH); lbScale=s; lbTx=(box.width-lbImgW*s)/2; lbTy=(box.height-lbImgH*s)/2; applyLightboxTransform(); }; lightboxImg.src=src; lightbox.style.display='flex'; lbOpen=true; lbStart=null; lbLastDist=null; } function closeLightbox(){ lbOpen=false; lightbox.style.display='none'; lightboxImg.src=''; } lightbox.addEventListener('click',e=>{ if(e.target===lightbox) closeLightbox(); }); lightboxClose.addEventListener('click',closeLightbox); function applyLightboxTransform(){ lightboxImg.style.transform=`translate(${lbTx}px,${lbTy}px) scale(${lbScale})`; } function lbClampPan(){ const box=lightboxInner.getBoundingClientRect(), w=lbImgW*lbScale, h=lbImgH*lbScale; const minX=Math.min(0,box.width-w), maxX=Math.max(0,box.width-w), minY=Math.min(0,box.height-h), maxY=Math.max(0,box.height-h); lbTx=clamp(lbTx,minX,maxX); lbTy=clamp(lbTy,minY,maxY); } function lbZoomAt(cx,cy,f){ const box=lightboxInner.getBoundingClientRect(); const x=cx-box.left, y=cy-box.top; const wx=(x-lbTx)/lbScale, wy=(y-lbTy)/lbScale; const ns=clamp(lbScale*f,1,8); lbTx=x-wx*ns; lbTy=y-wy*ns; lbScale=ns; lbClampPan(); applyLightboxTransform(); } ['pointerdown','pointermove','pointerup','pointercancel','wheel','dblclick'].forEach(evt=>{ lightbox.addEventListener(evt,e=>{ e.stopPropagation(); if(evt!=='pointerup'&&evt!=='pointercancel') e.preventDefault(); },{passive:false}); }); const lbPtrs=new Map(); lightbox.addEventListener('pointerdown',e=>{ if(!lbOpen) return; lightbox.setPointerCapture(e.pointerId); lbPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(!lbStart) lbStart={x:e.clientX,y:e.clientY,tx:lbTx,ty:lbTy}; }); lightbox.addEventListener('pointermove',e=>{ if(!lbOpen||!lbPtrs.has(e.pointerId)) return; lbPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); const pts=[...lbPtrs.values()]; if(pts.length===1){ const p=pts[0]; if(!lbStart) lbStart={x:e.clientX,y:e.clientY,tx:lbTx,ty:lbTy}; lbTx=lbStart.tx+(p.x-lbStart.x); lbTy=lbStart.ty+(p.y-lbStart.y); lbClampPan(); applyLightboxTransform(); } else if(pts.length===2){ const[a,b]=pts,midX=(a.x+b.x)/2,midY=(a.y+b.y)/2,dist=Math.hypot(b.x-a.x,b.y-a.y); if(lbLastDist==null){ lbLastDist=dist; return; } const f=dist/lbLastDist; lbLastDist=dist; lbZoomAt(midX,midY,f); } }); function lbEnd(e){ lbPtrs.delete(e.pointerId); if(lbPtrs.size<2) lbLastDist=null; if(lbPtrs.size===0) lbStart=null; } lightbox.addEventListener('pointerup',lbEnd); lightbox.addEventListener('pointercancel',lbEnd); lightbox.addEventListener('wheel',e=>{ if(!lbOpen) return; lbZoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12); }); lightbox.addEventListener('dblclick',e=>{ if(!lbOpen) return; lbZoomAt(e.clientX,e.clientY,1.4); });
+  let lbOpen=false,lbScale=1,lbTx=0,lbTy=0,lbImgW=0,lbImgH=0,lbStart=null,lbLastDist=null; function openLightbox(src){ lightboxImg.onload=()=>{ const box=lightboxInner.getBoundingClientRect(); lbImgW=lightboxImg.naturalWidth; lbImgH=lightboxImg.naturalHeight; const s=Math.min(box.width/lbImgW,box.height/lbImgH); lbScale=s; lbTx=(box.width-lbImgW*s)/2; lbTy=(box.height-lbImgH*s)/2; applyLightboxTransform(); }; lightboxImg.src=src; lightbox.style.display='flex'; lbOpen=true; lbStart=null; lbLastDist=null; } function closeLightbox(){ lbOpen=false; lightbox.style.display='none'; lightboxImg.src=''; } lightbox.addEventListener('click',e=>{ if(e.target===lightbox) closeLightbox(); }); lightboxClose.addEventListener('click',closeLightbox); function applyLightboxTransform(){ lightboxImg.style.transform=`translate(${lbTx}px,${lbTy}px) scale(${lbScale})`; } function lbClampPan(){ const box=lightboxInner.getBoundingClientRect(), w=lbImgW*lbScale, h=lbImgH*lbScale; const minX=Math.min(0,box.width-w), maxX=Math.max(0,box.width-w), minY=Math.min(0,box.height-h), maxY=Math.max(0,box.height-h); lbTx=clamp(lbTx,minX,maxX); lbTy=clamp(lbTy,minY,maxY); } function lbZoomAt(cx,cy,f){ const box=lightboxInner.getBoundingClientRect(), x=cx-box.left, y=cy-box.top; const wx=(x-lbTx)/lbScale, wy=(y-lbTy)/lbScale; const ns=clamp(lbScale*f,1,8); lbTx=x-wx*ns; lbTy=y-wy*ns; lbScale=ns; lbClampPan(); applyLightboxTransform(); } ['pointerdown','pointermove','pointerup','pointercancel','wheel','dblclick'].forEach(evt=>{ lightbox.addEventListener(evt,e=>{ e.stopPropagation(); if(evt!=='pointerup'&&evt!=='pointercancel') e.preventDefault(); },{passive:false}); }); const lbPtrs=new Map(); lightbox.addEventListener('pointerdown',e=>{ if(!lbOpen) return; lightbox.setPointerCapture(e.pointerId); lbPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(!lbStart) lbStart={x:e.clientX,y:e.clientY,tx:lbTx,ty:lbTy}; }); lightbox.addEventListener('pointermove',e=>{ if(!lbOpen||!lbPtrs.has(e.pointerId)) return; lbPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); const pts=[...lbPtrs.values()]; if(pts.length===1){ const p=pts[0]; if(!lbStart) lbStart={x:e.clientX,y:e.clientY,tx:lbTx,ty:lbTy}; lbTx=lbStart.tx+(p.x-lbStart.x); lbTy=lbStart.ty+(p.y-lbStart.y); lbClampPan(); applyLightboxTransform(); } else if(pts.length===2){ const[a,b]=pts,midX=(a.x+b.x)/2,midY=(a.y+b.y)/2,dist=Math.hypot(b.x-a.x,b.y-a.y); if(lbLastDist==null){ lbLastDist=dist; return; } const f=dist/lbLastDist; lbLastDist=dist; lbZoomAt(midX,midY,f); } }); function lbEnd(e){ lbPtrs.delete(e.pointerId); if(lbPtrs.size<2) lbLastDist=null; if(lbPtrs.size===0) lbStart=null; } lightbox.addEventListener('pointerup',lbEnd); lightbox.addEventListener('pointercancel',lbEnd); lightbox.addEventListener('wheel',e=>{ if(!lbOpen) return; lbZoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12); }); lightbox.addEventListener('dblclick',e=>{ if(!lbOpen) return; lbZoomAt(e.clientX,e.clientY,1.4); });
 
   // ===== Measure =====
   let measurePoints=[],measurePath=null,measureLabel=null;
@@ -231,33 +206,34 @@
   stage.addEventListener('click',e=>{ if(mode!=='measure')return; const r=stage.getBoundingClientRect(); const wx=(e.clientX-r.left-tx)/scale, wy=(e.clientY-r.top-ty)/scale; measurePoints.push({x:wx,y:wy}); updateMeasurePath(); });
 
   // ===== Modes =====
-  let mode='notes',sheetState='half',sheetOffsetY=0; function sizes(){ const vh=(visualViewport?visualViewport.height:window.innerHeight); return {half:Math.round(vh*.5), full:Math.round(vh*.97), header:74}; } function closedOffset(){ const S=sizes(); return S.half+40; } function applySheetTransformOffset(o){ sheetOffsetY=o; sheetPanel.style.transform=`translateY(${Math.max(0,o)}px)`; } function setSheetHeight(state,anim=true){ sheetState=state; const S=sizes(); sheetBody.style.maxHeight=(state==='full'?(S.full-S.header):(state==='half'?(S.half-S.header):0))+'px'; if(anim) sheetPanel.style.transition='transform 160ms cubic-bezier(.2,.8,.2,1)'; applySheetTransformOffset(state==='closed'?closedOffset():0); sheet.style.display=(state==='closed'?'none':'block'); if(anim) setTimeout(()=>{sheetPanel.style.transition='none'},170); } function openSheet(state='half'){ sheet.style.display='block'; setSheetHeight(state); }
-  let dragStartY=0,dragStartTime=0,draggingSheet=false,baseOffset=0,lastY=0,lastT=0,velocityY=0; function sheetDragStart(e){ draggingSheet=true; dragStartY=e.clientY; lastY=e.clientY; lastT=performance.now(); dragStartTime=lastT; baseOffset=sheetOffsetY; try{e.currentTarget.setPointerCapture(e.pointerId);}catch{} e.preventDefault(); } function sheetDragMove(e){ if(!draggingSheet) return; const now=performance.now(); const dy=e.clientY-dragStartY; const newOffset=clamp(baseOffset+Math.max(0,dy),0,closedOffset()); applySheetTransformOffset(newOffset); const dt=Math.max(1,now-lastT); velocityY=(e.clientY-lastY)/dt; lastY=e.clientY; lastT=now; e.preventDefault(); } function sheetDragEnd(){ if(!draggingSheet) return; draggingSheet=false; const threshold=closedOffset()*0.45; if(velocityY>0.8||sheetOffsetY>threshold){ setSheetHeight('closed'); } else { setSheetHeight(sheetState==='closed'?'half':sheetState); } }
+  let mode='notes',sheetState='half',sheetOffsetY=0; function sizes(){ const vh=(visualViewport?visualViewport.height:window.innerHeight); return {half:Math.round(vh*.5), full:Math.round(vh*.97), header:74}; } function closedOffset(){ const S=sizes(); return S.half+40; } function applySheetTransformOffset(o){ sheetOffsetY=o; sheetPanel.style.transform=`translateY(${Math.max(0,o)}px)`; }
+  function setSheetHeight(state,anim=true){ sheetState=state; const S=sizes(); sheetBody.style.maxHeight=(state==='full'?(S.full-S.header):(state==='half'?(S.half-S.header):0))+'px'; if(anim) sheetPanel.style.transition='transform 160ms cubic-bezier(.2,.8,.2,1)'; applySheetTransformOffset(state==='closed'?closedOffset():0); sheet.style.display=(state==='closed'?'none':'block'); if(anim) setTimeout(()=>{sheetPanel.style.transition='none'},170); }
+  function openSheet(state='half'){ sheet.style.display='block'; setSheetHeight(state); }
+
+  let dragStartY=0,dragStartTime=0,draggingSheet=false,baseOffset=0,lastY=0,lastT=0,velocityY=0;
+  function sheetDragStart(e){ draggingSheet=true; dragStartY=e.clientY; lastY=e.clientY; lastT=performance.now(); dragStartTime=lastT; baseOffset=sheetOffsetY; try{e.currentTarget.setPointerCapture(e.pointerId);}catch{} e.preventDefault(); }
+  function sheetDragMove(e){ if(!draggingSheet) return; const now=performance.now();
+    const dy=e.clientY - dragStartY; // tillåt upp/ner
+    const newOffset=clamp(baseOffset + dy, 0, closedOffset());
+    applySheetTransformOffset(newOffset);
+    const dt=Math.max(1, now-lastT); velocityY=(e.clientY-lastY)/dt; lastY=e.clientY; lastT=now; e.preventDefault(); }
+  function sheetDragEnd(){ if(!draggingSheet) return; draggingSheet=false;
+    const totalDy = lastY - dragStartY; // negativt = uppåt
+    const upSwipe   = (totalDy < -40) || (velocityY < -0.8);
+    const downFling = (velocityY > 0.8);
+    const threshold = closedOffset()*0.45;
+    if(upSwipe){ setSheetHeight('full'); return; }
+    if(downFling || sheetOffsetY>threshold){ setSheetHeight('closed'); }
+    else { setSheetHeight('half'); }
+  }
   ['#sheetHandle','#sheetHeader'].forEach(sel=>{ const el=document.querySelector(sel); el.addEventListener('pointerdown',sheetDragStart,{passive:false}); el.addEventListener('pointermove',sheetDragMove,{passive:false}); el.addEventListener('pointerup',sheetDragEnd); el.addEventListener('pointercancel',sheetDragEnd); }); sheetClose.addEventListener('click',()=>setSheetHeight('closed'));
+
   function setMode(m){ mode=m; btnModeNotes.classList.toggle('active',m==='notes'); btnModeMeasure.classList.toggle('active',m==='measure'); if(m==='measure') closePanels(); }
   btnModeNotes.addEventListener('click',()=>setMode('notes')); btnModeMeasure.addEventListener('click',()=>setMode('measure'));
 
-  // ===== Measure controls (Undo/Reset) – FIX & scopad Backspace =====
+  // ===== Measure controls (Undo/Reset) – skydda textinmatning =====
   function isEditableTarget(el){ if(!el) return false; if(el.closest('[contenteditable="true"]')) return true; const t=el.tagName; return t==='INPUT'||t==='TEXTAREA'; }
-  function bindMeasureControlsStrict(){
-    if (bindMeasureControlsStrict._bound) return;
-    bindMeasureControlsStrict._bound = true;
-    btnUndo?.addEventListener('click',(e)=>{ e.preventDefault(); if(mode!=='measure') setMode('measure'); if(measurePoints.length>0){ measurePoints.pop(); updateMeasurePath(); } });
-    btnReset?.addEventListener('click',(e)=>{ e.preventDefault(); if(mode!=='measure') setMode('measure'); measurePoints=[]; updateMeasurePath(); });
-    window.addEventListener('keydown',(ev)=>{
-      // Låt tangenttryckningar vara ifred när man skriver i notiser/inmatningar
-      if(isEditableTarget(document.activeElement)) return;
-      if(ev.key==='Escape' && mode==='measure'){
-        ev.preventDefault();
-        measurePoints=[]; updateMeasurePath();
-      } else if(ev.key==='Backspace' && mode==='measure'){
-        // Backspace ska bara påverka när man redan är i mät-läget
-        ev.preventDefault();
-        if(measurePoints.length>0){ measurePoints.pop(); updateMeasurePath(); }
-      }
-    });
-    // Kortkommandon för fet/kursiv även via tangent: hanteras av browser om fokus i contenteditable (Ctrl/Cmd+B/I)
-  }
+  function bindMeasureControlsStrict(){ if (bindMeasureControlsStrict._bound) return; bindMeasureControlsStrict._bound = true; btnUndo?.addEventListener('click',(e)=>{ e.preventDefault(); if(mode!=='measure') setMode('measure'); if(measurePoints.length>0){ measurePoints.pop(); updateMeasurePath(); } }); btnReset?.addEventListener('click',(e)=>{ e.preventDefault(); if(mode!=='measure') setMode('measure'); measurePoints=[]; updateMeasurePath(); }); window.addEventListener('keydown',(ev)=>{ if(isEditableTarget(document.activeElement)) return; if(ev.key==='Escape' && mode==='measure'){ ev.preventDefault(); measurePoints=[]; updateMeasurePath(); } else if(ev.key==='Backspace' && mode==='measure'){ ev.preventDefault(); if(measurePoints.length>0){ measurePoints.pop(); updateMeasurePath(); } } }); }
 
   // ===== Markers =====
   function buildSrcSet(name){ const x1=withPath(name), x2=withPath(_2xName(name)); return `${x1} 1x, ${x2} 2x`; }
@@ -278,7 +254,7 @@
   async function make2xBlob(blob1x,mimeHint){ const img=await blobToImage(blob1x); const c=document.createElement('canvas'); const w=(img.naturalWidth||img.width||32)*2, h=(img.naturalHeight||img.height||32)*2; c.width=w; c.height=h; const cx=c.getContext('2d'); cx.imageSmoothingEnabled=true; cx.imageSmoothingQuality='high'; cx.drawImage(img,0,0,w,h); const mime=(mimeHint&&/^image\//.test(mimeHint))?mimeHint:'image/png'; return await new Promise(res=>c.toBlob(b=>res(b), mime, 0.92)); }
   async function writeIconsFolderToZip(zip){ const folder=zip.folder('icons'); const uniq=new Set([].concat(ICONS_NORMAL,ICONS_OPEN)); for(const name of uniq){ const src1=withPath(name).replace(/^icons\//,''); let blob1x=null,mime1x='image/png'; try{ blob1x=await fetchBlob(src1); mime1x=blob1x.type||mime1x; }catch{ console.warn('Ikon saknas (1x):',src1); continue; } folder.file(name, blob1x); const name2x=_2xName(name); const src2=withPath(name2x).replace(/^icons\//,''); try{ const blob2x=await fetchBlob(src2); folder.file(name2x, blob2x); }catch{ try{ const gen2x=await make2xBlob(blob1x, mime1x); if(gen2x) folder.file(name2x, gen2x); }catch(err){ console.warn('Kunde inte generera @2x för', name, err); } } } }
 
-  // --- DataURL helpers (GIF-stöd finns redan i v3.6.7) ---
+  // --- DataURL helpers (GIF-stöd) ---
   function dataURLToBlob(dataURL){ const parts=dataURL.split(','); const header=parts[0]; const isBase64=/;base64/i.test(header); const mime=(header.match(/data:([^;]+)/)||[])[1]||'application/octet-stream'; let byteString; if(isBase64){ byteString=atob(parts[1]); } else { byteString=decodeURIComponent(parts[1]); } const ia=new Uint8Array(byteString.length); for(let i=0;i<byteString.length;i++) ia[i]=byteString.charCodeAt(i); return new Blob([ia],{type:mime}); }
 
   async function exportZip(){ try{ await openDB(); const meta=JSON.parse(localStorage.getItem(LSK)||'[]'); const htmls=await idbBulkGet(meta.map(m=>m.id)); const htmlById={}; htmls.forEach(({id,html})=>htmlById[id]=html||'' ); const zip=new JSZip(); const imagesFolder=zip.folder('images'); const seen=new Set(); const outMarkers=[]; for(const m of meta){ const processedHTML=await processNoteHTML(htmlById[m.id]||'',imagesFolder,seen); outMarkers.push({id:m.id,x:m.x,y:m.y,icon:m.icon||0,html:processedHTML}); } const payload={exportedAt:new Date().toISOString(), metersPerPixel:getMetersPerPixel(), markers:outMarkers}; zip.file('data.json', JSON.stringify(payload, null, 2)); await writeIconsFolderToZip(zip); const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='export.zip'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href); }catch(err){ console.error(err); alert('Export misslyckades: '+err.message); } }
