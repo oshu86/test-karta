@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>index v3.6.12</title>
+  <title>index v3.6.13</title>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     :root{--bg:#0f1115;--ink:#e6e6e6;--muted:#2a3142;--panel:#141822;--accent:#ffd166;--vh:1vh}
@@ -176,7 +176,7 @@
   function idbSet(id,html){ return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readwrite'),st=tx.objectStore(DB_STORE),q=st.put({id,html}); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error); }); }
   function idbBulkGet(ids){ return Promise.all(ids.map(id=>idbGet(id).then(html=>({id,html})))) }
   function idbClear(){ return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readwrite'),st=tx.objectStore(DB_STORE),q=st.clear(); q.onsuccess=()=>res(); q.onerror=()=>rej(q.error); }); }
-  function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id,x:parseFloat(m.style.left),y:parseFloat(m.style.top),icon:parseInt(m.dataset.icon||'0',10)||0, time:parseInt(m.dataset.time||'0',10)||0 })); try{localStorage.setItem(LSK,JSON.stringify(out))}catch{} }
+  function saveMeta(){ if(IS_PLAYER) return; const out=[...world.querySelectorAll('.marker')].map(m=>({ id:m.dataset.id,x:parseFloat(m.style.left),y:parseFloat(m.style.top),icon:parseInt(m.dataset.icon||'0',10)||0, time:parseInt(m.dataset.time||'0',10)||0 })); try{localStorage.setProperty(LSK,JSON.stringify(out))}catch{} }
   async function saveHTML(id,html){ if(IS_PLAYER) return; try{await idbSet(id,html)}catch{} }
   async function loadAllFromLocal(){ const meta=JSON.parse(localStorage.getItem(LSK)||'[]'); meta.forEach(o=>createMarker(o.x,o.y,o.id,false,o.icon||0,o.time||0)); const htmls=await idbBulkGet(meta.map(m=>m.id)); htmls.forEach(({id,html})=>{store[id]={html:html||''}}); return meta.length }
   async function loadAllFromJSON(persist=true){ const r=await fetch('data.json',{cache:'no-store'}); if(!r.ok) throw new Error('Kunde inte läsa data.json'); const data=await r.json(); await applyImportedData(data,persist,false); return Array.isArray(data.markers)?data.markers.length:0 }
@@ -271,7 +271,28 @@
   async function imageToWebPBlob(dataURL){ const img=await dataURLtoImage(dataURL); let {width:w,height:h}=img; const s=Math.min(1,2560/Math.max(w,h)); if(s<1){ w=Math.round(w*s); h=Math.round(h*s);} const c=document.createElement('canvas'); c.width=w; c.height=h; const cx=c.getContext('2d'); cx.drawImage(img,0,0,w,h); let blob=await canvasToBlob(c,'image/webp',0.8); if(!blob||blob.size===0) blob=await canvasToBlob(c,'image/jpeg',0.85); return blob; }
   function parseHTML(html){ const d=document.createElement('div'); d.innerHTML=html; return d; }
   async function processNoteHTML(html,zipImages,seen){ const root=parseHTML(html); const imgs=[...root.querySelectorAll('img')]; for(const img of imgs){ const src=img.getAttribute('src')||''; if(!src.startsWith('data:image/')) continue; const m = src.match(/^data:([^;]+);/i); const mime = m ? m[1].toLowerCase() : ''; let blob, ext; if(mime==='image/gif'){ blob = dataURLToBlob(src); ext = 'gif'; } else { blob = await imageToWebPBlob(src); ext = (blob && blob.type==='image/jpeg') ? 'jpg' : 'webp'; } const arr=await blob.arrayBuffer(); const hash=await crypto.subtle.digest('SHA-1',arr).then(h=>Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join('')); const filename=`images/${hash}.${ext}`; if(!seen.has(hash)){ seen.add(hash); zipImages.file(`${hash}.${ext}`, new Uint8Array(arr)); } img.setAttribute('src',filename); img.removeAttribute('width'); img.removeAttribute('height'); } return root.innerHTML; }
-  function updateScaleBar(){ try{ const px=sbBar.clientWidth||120; const mpp=getMetersPerPixel(); const km=(px*mpp/1000).toFixed(1); sbLabel.textContent=`${km} km`; }catch{} }
+  function updateScaleBar(){ 
+    try{
+      const mpp = getMetersPerPixel() / scale; // Justera mpp för aktuell zoom (effektiv meters per screen-pixel)
+      const maxBarPx = 200; // Max bredd för strecket (undvik för brett vid låg zoom)
+      let targetMeters = 100000; // Starta med 100 km som mål
+      let barPx = (targetMeters / mpp); // Beräkna pixlar för mål-avstånd
+      // Justera mål-avståndet dynamiskt för att passa inom maxBarPx (runda till snygga värden: 1,5,10,50,100 km etc.)
+      const scales = [1000, 5000, 10000, 50000, 100000, 500000, 1000000, 5000000]; // Möjliga meters (1 km, 5 km, etc.)
+      for (let i = scales.length - 1; i >= 0; i--) {
+        const meters = scales[i];
+        barPx = (meters / mpp);
+        if (barPx <= maxBarPx) {
+          targetMeters = meters;
+          break;
+        }
+      }
+      if (barPx < 20) barPx = 20; // Minsta bredd för synlighet
+      sbBar.style.width = `${Math.round(barPx)}px`;
+      const km = (targetMeters / 1000).toFixed(0);
+      sbLabel.textContent = `${km} km`;
+    }catch(e){ console.warn('Scalebar error:', e); sbLabel.textContent = '—'; }
+  }
 })();</script>
 </body>
 </html>
